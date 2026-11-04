@@ -1,38 +1,46 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { eq } from "drizzle-orm";
+import { username } from "better-auth/plugins";
 import { db } from "@/core/db";
 import * as schema from "@/core/db/schema";
 
 /*
-  Вход само с Google. Профилът (profiles) се създава при първия вход със статус „pending“;
-  става „active“ чак след валидна покана. Собственикът (OWNER_EMAIL) е активен веднага.
+  Вход с потребителско име и парола. Регистрация отвън НЕ е възможна (disableSignUp):
+  акаунтите ги създава собственикът със скрипта `pnpm user:create`.
+  Смяна на парола: в Настройки (нужна е сегашната). Забравена парола: `pnpm user:reset`.
 */
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
-  socialProviders: {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID as string,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
-    },
+  emailAndPassword: {
+    enabled: true,
+    disableSignUp: true,
+    minPasswordLength: 8,
+    maxPasswordLength: 128,
+    revokeSessionsOnPasswordReset: true,
   },
+  plugins: [username({ minUsernameLength: 3, maxUsernameLength: 30, displayUsername: false })],
   session: {
-    expiresIn: 60 * 60 * 24 * 60, // 60 дни: учениците не бива да се вписват всеки ден
+    expiresIn: 60 * 60 * 24 * 60, // 60 дни: ученикът не бива да се вписва всеки ден
     updateAge: 60 * 60 * 24,
+  },
+  rateLimit: {
+    enabled: true,
+    storage: "database", // на Vercel има много екземпляри; паметта не стига
+    window: 60,
+    max: 60,
+    customRules: {
+      "/sign-in/username": { window: 60, max: 5 },
+      "/change-password": { window: 60, max: 5 },
+    },
   },
   databaseHooks: {
     user: {
       create: {
         after: async (user) => {
-          const owner = !!process.env.OWNER_EMAIL && user.email.toLowerCase() === process.env.OWNER_EMAIL.toLowerCase();
+          // само собственикът създава акаунти, затова профилът е активен веднага
           await db
             .insert(schema.profiles)
-            .values({
-              id: user.id,
-              displayName: user.name ?? null,
-              status: owner ? "active" : "pending",
-              role: owner ? "owner" : "student",
-            })
+            .values({ id: user.id, displayName: user.name ?? null, status: "active", role: "student" })
             .onConflictDoNothing();
         },
       },

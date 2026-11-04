@@ -39,7 +39,13 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="bg" className={`${ui.variable} ${read.variable}`}>
+    <html lang="bg" className={`${ui.variable} ${read.variable}`} suppressHydrationWarning>
+      <head>
+        <script
+          // тема: прилага запазения избор преди първото рисуване (без проблясване)
+          dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}` }}
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

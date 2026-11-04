@@ -8,7 +8,9 @@
     "start": "next start",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file=.env.local ./node_modules/drizzle-kit/bin.cjs migrate",
-    "invite": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/make-invite.mts"
+    "user:create": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/user.mts create",
+    "user:reset": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/user.mts reset",
+    "user:list": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/user.mts list"
   },
   "dependencies": {
     "@neon/config": "^1.10.2",

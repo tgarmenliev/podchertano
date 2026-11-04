@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { IconCamera, IconChevron } from "@/design/icons";
+import { IconCamera, IconChevron, IconSettings } from "@/design/icons";
 
 /* Примерни данни за макета. В Етап 2–3 идват от базата. */
 const recent = [
@@ -19,9 +19,14 @@ export default function Today() {
             <span className="wave-line absolute inset-x-0 -bottom-[7px]" style={{ height: 5 }} />
           </span>
         </div>
-        <p className="text-sm text-ink-2">
-          <span className="font-semibold text-ink">12</span> дни подред
-        </p>
+        <div className="flex items-center gap-1">
+          <p className="text-sm text-ink-2">
+            <span className="font-semibold text-ink">12</span> дни подред
+          </p>
+          <Link href="/settings" aria-label="Настройки" className="grid h-11 w-11 place-items-center rounded-full text-ink-2 active:bg-surface">
+            <IconSettings width={22} height={22} />
+          </Link>
+        </div>
       </header>
 
       <section className="pt-9" aria-labelledby="due">

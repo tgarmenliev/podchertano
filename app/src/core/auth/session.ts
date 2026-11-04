@@ -15,11 +15,10 @@ export const getCurrent = cache(async () => {
   return { user: session.user, profile: profile ?? null };
 });
 
-/** Пази екраните: без вход -> /login, без покана -> /invite, блокиран -> /login. */
+/** Пази екраните: без вход -> /login; блокиран или неактивен профил -> /login. */
 export async function requireActive() {
   const cur = await getCurrent();
   if (!cur) redirect("/login");
-  if (!cur.profile || cur.profile.status === "blocked") redirect("/login?e=blocked");
-  if (cur.profile.status !== "active") redirect("/invite");
+  if (!cur.profile || cur.profile.status !== "active") redirect("/login?e=blocked");
   return { user: cur.user, profile: cur.profile };
 }
