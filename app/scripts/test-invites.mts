@@ -2,9 +2,17 @@
 import { db } from "../src/core/db";
 import { invites, profiles, user } from "../src/core/db/schema";
 import { redeemInvite } from "../src/core/invites/redeem";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 const assert = (c: boolean, m: string) => { if (!c) { console.error("ПРОВАЛ:", m); process.exit(1); } console.log("ok  ", m); };
+
+const TEST_USERS = ["u1", "u2", "u3", "u4", "u5"];
+const TEST_CODES = ["ABCDEF12", "EXPIRED99", "MANY12345"];
+async function cleanup() {
+  await db.delete(user).where(inArray(user.id, TEST_USERS)); // профили и използвания се трият каскадно
+  await db.delete(invites).where(inArray(invites.code, TEST_CODES));
+}
+await cleanup();
 
 async function mkUser(id: string) {
   await db.insert(user).values({ id, name: id, email: `${id}@test.local` });
@@ -30,5 +38,6 @@ await mkUser("u5");
 const res = await Promise.all(["u2", "u3", "u4", "u5"].map((u) => redeemInvite(u, "MANY12345")));
 assert(res.filter((x) => x.ok).length === 3, "при едновременни заявки точно 3 успяват");
 assert((await db.select().from(invites).where(eq(invites.code, "MANY12345")))[0].usedCount === 3, "used_count е 3");
-console.log("ВСИЧКО МИНА");
+await cleanup();
+console.log("ВСИЧКО МИНА (тестовите данни са изтрити)");
 process.exit(0);

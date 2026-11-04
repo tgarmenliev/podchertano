@@ -4,5 +4,8 @@ export default defineConfig({
   schema: "./src/core/db/schema.ts",
   out: "./drizzle",
   dialect: "postgresql",
-  dbCredentials: { url: process.env.DATABASE_URL ?? "postgres://localhost/postgres" },
+  dbCredentials: {
+    // миграциите минават през директната (не-pooled) връзка
+    url: process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL ?? "postgres://localhost/postgres",
+  },
 });

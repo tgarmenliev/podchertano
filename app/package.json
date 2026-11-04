@@ -11,10 +11,13 @@
     "invite": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/make-invite.mts"
   },
   "dependencies": {
+    "@neon/config": "^1.10.2",
+    "@neon/env": "^1.6.9",
+    "@vercel/functions": "^3.10.6",
     "better-auth": "^1.7.17",
     "drizzle-orm": "^0.45.4",
     "next": "16.4.5",
-    "postgres": "^4.0.0",
+    "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",
@@ -23,6 +26,7 @@
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.11",
