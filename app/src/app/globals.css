@@ -1,0 +1,179 @@
+@import "tailwindcss";
+
+/*
+  Токени на „Подчертано“.
+  Светла и тъмна тема са проектирани поотделно: light-dark(светла, тъмна).
+  Системната тема е по подразбиране; <html data-theme="light|dark"> я заменя.
+  Неутралите са без нюанс (chroma 0), настроението носят акцентът и шрифтовете.
+*/
+:root {
+  color-scheme: light dark;
+
+  --bg: light-dark(oklch(1 0 0), oklch(0.13 0 0));
+  --surface: light-dark(oklch(0.972 0 0), oklch(0.175 0 0));
+  --surface-2: light-dark(oklch(0.94 0 0), oklch(0.22 0 0));
+  --line: light-dark(oklch(0.9 0 0), oklch(0.28 0 0));
+  --line-strong: light-dark(oklch(0.8 0 0), oklch(0.38 0 0));
+
+  --ink: light-dark(oklch(0.2 0 0), oklch(0.96 0 0));
+  --ink-2: light-dark(oklch(0.4 0 0), oklch(0.8 0 0));
+  --ink-3: light-dark(oklch(0.5 0 0), oklch(0.68 0 0));
+
+  /* „червен молив“: марката, маркираните думи, основното действие */
+  --accent: light-dark(oklch(0.52 0.19 25), oklch(0.72 0.15 25));
+  --accent-strong: light-dark(oklch(0.46 0.18 24), oklch(0.74 0.14 25));
+  --accent-ink: light-dark(oklch(1 0 0), oklch(0.16 0 0));
+  --accent-tint: light-dark(oklch(0.955 0.03 25), oklch(0.26 0.06 25));
+
+  --ok: light-dark(oklch(0.48 0.12 155), oklch(0.76 0.13 155));
+  --ok-tint: light-dark(oklch(0.955 0.04 155), oklch(0.25 0.05 155));
+  --warn: light-dark(oklch(0.5 0.12 70), oklch(0.8 0.13 80));
+  --warn-tint: light-dark(oklch(0.96 0.05 85), oklch(0.27 0.05 80));
+
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-pill: 999px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tabbar-h: 56px;
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-tint: var(--accent-tint);
+  --color-ok: var(--ok);
+  --color-ok-tint: var(--ok-tint);
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --font-sans: var(--font-ui), system-ui, sans-serif;
+  --font-serif: var(--font-read), Georgia, serif;
+}
+
+html {
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui), system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+button, input, a { touch-action: manipulation; }
+button { font: inherit; color: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ───────── Вълничката ─────────
+   Точна синусоида, изрязана като маска, така че цветът се взима от токените.
+   Движи се само при смяна на състояние (избор на дума, напредък). */
+:root {
+  --wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='6' viewBox='0 0 12 6'%3E%3Cpath d='M0 3 Q3 0 6 3 T12 3' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.mark {
+  position: relative;
+  display: inline-block;
+  border-radius: 3px;
+}
+.mark::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.12em;
+  height: 6px;
+  background: var(--accent);
+  -webkit-mask: var(--wave) repeat-x left center / 12px 6px;
+  mask: var(--wave) repeat-x left center / 12px 6px;
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 0.22s var(--ease-out);
+}
+.mark[data-on="true"]::after { clip-path: inset(0 0 0 0); }
+.mark[data-on="true"] { background: var(--accent-tint); }
+.mark[data-joined="true"]::after { right: -0.32em; }
+.mark[data-joined="true"] { box-shadow: 0.32em 0 0 var(--accent-tint); border-top-right-radius: 0; border-bottom-right-radius: 0; }
+
+.wave-line {
+  height: 6px;
+  background: var(--accent);
+  -webkit-mask: var(--wave) repeat-x left center / 12px 6px;
+  mask: var(--wave) repeat-x left center / 12px 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark::after { transition: none; }
+  * { scroll-behavior: auto !important; }
+}
+
+/* ───────── Основни компоненти ───────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 20px;
+  border-radius: var(--radius-m);
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1;
+  border: 0;
+  cursor: pointer;
+  transition: transform 0.12s var(--ease-out), background-color 0.15s;
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--accent-strong); color: var(--accent-ink); }
+.btn-secondary { background: var(--surface-2); color: var(--ink); }
+.btn-ghost { background: transparent; color: var(--ink-2); }
+.btn[disabled] { opacity: 0.45; cursor: default; }
+
+.field {
+  width: 100%;
+  min-height: 56px;
+  padding: 0 16px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-m);
+  font-family: var(--font-read), Georgia, serif;
+  font-size: 20px;
+  outline: none;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.field:focus { border-color: var(--accent); background: var(--bg); }
+.field::placeholder { color: var(--ink-3); }
+
+.read {
+  font-family: var(--font-read), Georgia, serif;
+  font-optical-sizing: auto;
+}
+
+.scroll-pad-bottom { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 24px); }

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#ffffff"/>
+  <!-- П -->
+  <path d="M150 360V150h212v210" fill="none" stroke="#2b2b2b" stroke-width="44" stroke-linecap="square" stroke-linejoin="miter"/>
+  <!-- вълничка -->
+  <path d="M110 420 q24-30 48 0 t48 0 t48 0 t48 0 t48 0 t48 0 t48 0" transform="translate(-6 0)" fill="none" stroke="#d1382a" stroke-width="22" stroke-linecap="round"/>
+</svg>
