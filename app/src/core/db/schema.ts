@@ -14,12 +14,67 @@ import {
 
 /*
   Модел на данните (план, раздел 3).
-  Всеки запис на потребител е вързан с user_id. profiles.id е auth uid (FK към auth.users
-  се добавя в миграцията, защото схемата auth е на Supabase).
+  Всеки запис на потребител е вързан с user_id. profiles.id е auth uid (FK към user.id).
 */
 
+/* ───────── Таблици на Better Auth (вход) ───────── */
+export const user = pgTable("user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  image: text("image"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const session = pgTable(
+  "session",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  },
+  (t) => [index("session_user_idx").on(t.userId)],
+);
+
+export const account = pgTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("account_user_idx").on(t.userId)],
+);
+
+export const verification = pgTable("verification", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/* ───────── Приложение ───────── */
 export const profiles = pgTable("profiles", {
-  id: uuid("id").primaryKey(),
+  id: text("id").primaryKey().references(() => user.id, { onDelete: "cascade" }),
   displayName: text("display_name"),
   status: text("status", { enum: ["pending", "active", "blocked"] }).notNull().default("pending"),
   role: text("role", { enum: ["student", "owner"] }).notNull().default("student"),
@@ -31,7 +86,7 @@ export const profiles = pgTable("profiles", {
 
 export const invites = pgTable("invites", {
   code: text("code").primaryKey(),
-  createdBy: uuid("created_by"),
+  createdBy: text("created_by"),
   maxUses: integer("max_uses").notNull().default(1),
   usedCount: integer("used_count").notNull().default(0),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
@@ -42,7 +97,7 @@ export const invites = pgTable("invites", {
 export const inviteRedemptions = pgTable("invite_redemptions", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   code: text("code").notNull().references(() => invites.code),
-  userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
   at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -51,7 +106,7 @@ export const sources = pgTable(
   "sources",
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
     kind: text("kind").notNull().default("reading_photo"),
     title: text("title"),
     fullText: text("full_text"),
@@ -70,7 +125,7 @@ export const vocabItems = pgTable(
   "vocab_items",
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
     lemma: text("lemma").notNull(),
     pos: text("pos").notNull().default(""),
     phrase: text("phrase"),
@@ -98,7 +153,7 @@ export const encounters = pgTable(
   "encounters",
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
     vocabItemId: uuid("vocab_item_id").notNull().references(() => vocabItems.id, { onDelete: "cascade" }),
     sourceId: uuid("source_id").references(() => sources.id, { onDelete: "set null" }),
     surfaceForm: text("surface_form").notNull(),
@@ -113,7 +168,7 @@ export const srsCards = pgTable(
   "srs_cards",
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
     itemKind: text("item_kind").notNull().default("vocab"),
     itemId: uuid("item_id").notNull(),
     due: timestamp("due", { withTimezone: true }).notNull().defaultNow(),
@@ -139,7 +194,7 @@ export const reviewLogs = pgTable(
   "review_logs",
   {
     id: uuid("id").primaryKey(),
-    userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
     cardId: uuid("card_id").notNull().references(() => srsCards.id, { onDelete: "cascade" }),
     mode: text("mode", { enum: ["recognize", "type_from_bg", "cloze"] }).notNull(),
     rating: integer("rating").notNull(), // 1 Again, 2 Hard, 3 Good, 4 Easy
@@ -158,7 +213,7 @@ export const usageEvents = pgTable(
   "usage_events",
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-    userId: uuid("user_id").references(() => profiles.id, { onDelete: "set null" }),
+    userId: text("user_id").references(() => profiles.id, { onDelete: "set null" }),
     kind: text("kind", { enum: ["ocr", "detect", "enrich"] }).notNull(),
     provider: text("provider").notNull(),
     model: text("model"),
