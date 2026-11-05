@@ -25,45 +25,59 @@ const clean = (s: string | null | undefined) => (s ?? "").trim().replace(/\s+/g,
 const orNull = (s: string | null | undefined) => clean(s) || null;
 
 /** Добавя дума в речника и ѝ прави карта за повторение. Дублирана дума само получава нов контекст. */
-export async function addWord(userId: string, w: NewWord) {
+type Db = typeof db;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+export async function addWord(userId: string, w: NewWord, outer?: Tx) {
   const lemma = clean(w.lemma).toLowerCase();
   const translation = clean(w.translationBg);
   if (!lemma || !translation) throw new Error("Нужни са дума и превод");
   const phrase = orNull(w.phrase)?.toLowerCase() ?? null;
   const pos = clean(w.pos);
 
-  return db.transaction(async (tx) => {
-    const inserted = await tx
-      .insert(vocabItems)
-      .values({
-        userId,
-        lemma,
-        pos,
-        phrase,
-        phraseKind: w.phraseKind ?? null,
-        translationBg: translation,
-        translationAltBg: orNull(w.translationAltBg),
-        meaningBg: orNull(w.meaningBg),
-        definitionEn: orNull(w.definitionEn),
-        exampleEn: orNull(w.exampleEn),
-        notes: orNull(w.notes),
-        aiModel: w.aiModel ?? null,
-      })
-      .onConflictDoNothing()
-      .returning({ id: vocabItems.id });
+  const run = <T,>(fn: (tx: Tx) => Promise<T>) => (outer ? fn(outer) : db.transaction(fn));
+  return run(async (tx) => {
+    // същата дума (и фраза) вече е в речника? Ако частта на речта е празна от едната страна, пак е същата.
+    const [existing] = await tx
+      .select({ id: vocabItems.id, pos: vocabItems.pos })
+      .from(vocabItems)
+      .where(
+        and(
+          eq(vocabItems.userId, userId),
+          eq(vocabItems.lemma, lemma),
+          sql`coalesce(${vocabItems.phrase}, '') = ${phrase ?? ""}`,
+          pos ? or(eq(vocabItems.pos, pos), eq(vocabItems.pos, "")) : undefined,
+        ),
+      )
+      .limit(1);
 
     let id: string;
     let created = false;
-    if (inserted.length) {
+    if (existing) {
+      id = existing.id;
+      if (!existing.pos && pos) await tx.update(vocabItems).set({ pos }).where(eq(vocabItems.id, id));
+    } else {
+      const inserted = await tx
+        .insert(vocabItems)
+        .values({
+          userId,
+          lemma,
+          pos,
+          phrase,
+          phraseKind: w.phraseKind ?? null,
+          translationBg: translation,
+          translationAltBg: orNull(w.translationAltBg),
+          meaningBg: orNull(w.meaningBg),
+          definitionEn: orNull(w.definitionEn),
+          exampleEn: orNull(w.exampleEn),
+          notes: orNull(w.notes),
+          aiModel: w.aiModel ?? null,
+        })
+        .onConflictDoNothing()
+        .returning({ id: vocabItems.id });
+      if (!inserted.length) throw new Error("Думата не можа да се запази");
       id = inserted[0].id;
       created = true;
-    } else {
-      const [ex] = await tx
-        .select({ id: vocabItems.id })
-        .from(vocabItems)
-        .where(and(eq(vocabItems.userId, userId), eq(vocabItems.lemma, lemma), eq(vocabItems.pos, pos), sql`coalesce(${vocabItems.phrase}, '') = ${phrase ?? ""}`))
-        .limit(1);
-      id = ex.id;
     }
 
     const sentence = orNull(w.sentence);

@@ -29,9 +29,12 @@ export default async function Words({ searchParams }: { searchParams: Promise<{ 
     <main>
       <header className="flex items-center justify-between py-2">
         <h1 className="text-2xl font-semibold tracking-tight">Речник</h1>
-        <Link href="/words/new" className="btn btn-secondary !min-h-11 !px-4 text-[15px]">
-          Добави дума
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/pages" className="px-2 text-[15px] text-ink-2 underline underline-offset-4">Страници</Link>
+          <Link href="/words/new" className="btn btn-secondary !min-h-11 !px-4 text-[15px]">
+            Добави дума
+          </Link>
+        </div>
       </header>
 
       {all.length === 0 ? (

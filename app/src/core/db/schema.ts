@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  customType,
   index,
   integer,
   jsonb,
@@ -131,6 +132,18 @@ export const sources = pgTable(
   },
   (t) => [index("sources_user_created_idx").on(t.userId, t.createdAt)],
 );
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/** Компресирано копие на снимката (JPEG, ~1400 px). Достъпва се само през сървъра, само от собственика. */
+export const sourceImages = pgTable("source_images", {
+  sourceId: uuid("source_id").primaryKey().references(() => sources.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+  mime: text("mime").notNull().default("image/jpeg"),
+  bytes: integer("bytes").notNull(),
+  data: bytea("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const vocabItems = pgTable(
   "vocab_items",

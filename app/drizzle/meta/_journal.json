@@ -15,6 +15,13 @@
       "when": 1793820311788,
       "tag": "0001_username_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793881117875,
+      "tag": "0002_source_images",
+      "breakpoints": true
     }
   ]
 }

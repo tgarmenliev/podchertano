@@ -5,6 +5,7 @@ import { profiles, srsCards, user } from "../src/core/db/schema";
 import { addWord, deleteWord, getWord, listWords, updateWord } from "../src/modules/vocab/service";
 import { getQueue, getStats, maskSentence, submitReview } from "../src/modules/review/service";
 import { eq } from "drizzle-orm";
+import { deleteSource, getSource, getSourceImage, listSources, saveScan } from "../src/modules/scan/service";
 
 const assert = (c: boolean, m: string) => { if (!c) { console.error("ПРОВАЛ:", m); process.exit(1); } console.log("ok  ", m); };
 const U = "svc_test_user", V = "svc_other_user";
@@ -57,6 +58,31 @@ assert((await db.select().from(srsCards).where(eq(srsCards.itemId, b.id))).lengt
 let threw = false; try { await submitReview(V, { logId: randomUUID(), cardId: q1[0].cardId, mode: "recognize", rating: 3, correct: true, reviewedAt: now }); } catch { threw = true; }
 assert(threw, "чужд потребител не може да прегледа чужда карта");
 
+
+// ── страници със снимки ──
+const words = [
+  { i: 0, t: "He", x: 0, y: 0, w: 10, h: 10, line: 0, para: 0, conf: 90, score: 0, auto: false, sel: false },
+  { i: 1, t: "repaired", x: 10, y: 0, w: 10, h: 10, line: 0, para: 0, conf: 90, score: 0.9, auto: true, sel: true },
+  { i: 2, t: "the", x: 20, y: 0, w: 10, h: 10, line: 0, para: 0, conf: 90, score: 0, auto: false, sel: false },
+  { i: 3, t: "fence.", x: 30, y: 0, w: 10, h: 10, line: 1, para: 0, conf: 90, score: 0.8, auto: true, sel: true },
+];
+const img = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+const sv = await saveScan(U, { image: img, mime: "image/jpeg", width: 1400, height: 1900, words, items: [
+  { lemma: "repair", pos: "verb", translationBg: "поправям", sentence: "He repaired the fence.", surfaceForm: "repaired" },
+  { lemma: "fence", pos: "noun", translationBg: "ограда", sentence: "He repaired the fence.", surfaceForm: "fence" },
+] });
+assert(sv.created === 1, "страница: нова е само „repair“ („fence“ вече е в речника)");
+const ls = await listSources(U);
+assert(ls.length === 1 && ls[0].words === 2, "списък на страниците: 2 думи от страницата");
+const gs = await getSource(U, sv.sourceId);
+assert(!!gs && gs.saved.length === 2 && gs.fullText === "He repaired the\nfence.", "детайл на страница: думи и текст по редове");
+assert(((await getSourceImage(U, sv.sourceId))?.data.length ?? 0) === img.length, "снимката се чете обратно");
+assert((await getSource(V, sv.sourceId)) === null && (await getSourceImage(V, sv.sourceId)) === null, "чужд потребител не вижда страницата и снимката");
+await deleteSource(V, sv.sourceId);
+assert((await listSources(U)).length === 1, "чужд потребител не може да изтрие страница");
+await deleteSource(U, sv.sourceId);
+assert((await listSources(U)).length === 0 && (await getSourceImage(U, sv.sourceId)) === null, "изтриване на страница маха и снимката");
+assert((await listWords(U, { q: "repair" })).length === 1, "думите остават в речника след изтриване на страницата");
 await db.delete(user).where(eq(user.id, U)); await db.delete(user).where(eq(user.id, V));
 console.log("ВСИЧКО МИНА (тестовите данни са изтрити)");
 process.exit(0);
