@@ -22,6 +22,8 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 60, // 60 дни: ученикът не бива да се вписва всеки ден
     updateAge: 60 * 60 * 24,
+    // подписан „бисквитен“ кеш на сесията: повечето заявки не питат базата за вход
+    cookieCache: { enabled: true, maxAge: 5 * 60 },
   },
   rateLimit: {
     enabled: true,

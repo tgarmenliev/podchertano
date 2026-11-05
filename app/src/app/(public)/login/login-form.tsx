@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { authClient } from "@/core/auth/client";
+import { keepFocus } from "@/design/keep-focus";
 
 export function LoginForm({ blocked }: { blocked: boolean }) {
   const [username, setUsername] = useState("");
@@ -69,7 +70,7 @@ export function LoginForm({ blocked }: { blocked: boolean }) {
       )}
 
       <div className="mt-auto pt-10">
-        <button type="submit" className="btn btn-primary w-full" disabled={busy || !username || !password}>
+        <button type="submit" className="btn btn-primary w-full" onMouseDown={keepFocus} disabled={busy || !username || !password}>
           {busy ? "Влизаме…" : "Вход"}
         </button>
         <p className="mt-4 text-center text-sm text-ink-2">Акаунтът ти го създава този, който ти е дал достъп. Забравена парола? Поискай нова от него.</p>

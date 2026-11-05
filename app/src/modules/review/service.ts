@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import { db } from "@/core/db";
 import { encounters, profiles, reviewLogs, srsCards, vocabItems } from "@/core/db/schema";
 import { dayKey, startOfDay, streak } from "@/core/srs/day";
@@ -45,18 +45,19 @@ export async function getQueue(userId: string, now = new Date(), opts: { cap?: n
   const tz = profile?.timezone ?? "Europe/Sofia";
   const sod = startOfDay(now, tz);
 
-  const introducedToday = await db
-    .select({ n: sql<number>`count(distinct ${reviewLogs.cardId})::int` })
-    .from(reviewLogs)
-    .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, sod), sql`(${reviewLogs.cardStateBefore}->>'state') = '0'`));
+  const [introducedToday, due] = await Promise.all([
+    db
+      .select({ n: sql<number>`count(distinct ${reviewLogs.cardId})::int` })
+      .from(reviewLogs)
+      .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, sod), sql`(${reviewLogs.cardStateBefore}->>'state') = '0'`)),
+    db
+      .select()
+      .from(srsCards)
+      .where(and(eq(srsCards.userId, userId), eq(srsCards.suspended, false), ne(srsCards.state, 0), lte(srsCards.due, now)))
+      .orderBy(asc(srsCards.due))
+      .limit(cap),
+  ]);
   const newAllowed = Math.max(0, (profile?.dailyNewWords ?? 8) - (introducedToday[0]?.n ?? 0));
-
-  const due = await db
-    .select()
-    .from(srsCards)
-    .where(and(eq(srsCards.userId, userId), eq(srsCards.suspended, false), ne(srsCards.state, 0), lte(srsCards.due, now)))
-    .orderBy(asc(srsCards.due))
-    .limit(cap);
   const fresh =
     newAllowed > 0
       ? await db
@@ -71,11 +72,21 @@ export async function getQueue(userId: string, now = new Date(), opts: { cap?: n
 
   const cards = [...due, ...fresh];
   if (!cards.length) return [];
+  const ids = cards.map((c) => c.itemId);
+  // две заявки за всички карти (вместо две на карта): по-бързо при далечна база
+  const [words, encs] = await Promise.all([
+    db.select().from(vocabItems).where(inArray(vocabItems.id, ids)),
+    db.select().from(encounters).where(inArray(encounters.vocabItemId, ids)).orderBy(desc(encounters.createdAt)),
+  ]);
+  const wordById = new Map(words.map((w) => [w.id, w]));
+  const latestEnc = new Map<string, (typeof encs)[number]>();
+  for (const e of encs) if (!latestEnc.has(e.vocabItemId)) latestEnc.set(e.vocabItemId, e);
+
   const items: QueueItem[] = [];
   for (const c of cards) {
-    const [w] = await db.select().from(vocabItems).where(eq(vocabItems.id, c.itemId));
+    const w = wordById.get(c.itemId);
     if (!w) continue;
-    const [enc] = await db.select().from(encounters).where(eq(encounters.vocabItemId, w.id)).orderBy(desc(encounters.createdAt)).limit(1);
+    const enc = latestEnc.get(w.id);
     const target = w.phrase ?? w.lemma;
     const surface = enc?.surfaceForm ?? null;
     const masked = enc ? maskSentence(enc.sentence, enc.surfaceForm) : null;
@@ -146,17 +157,19 @@ export async function submitReview(userId: string, input: ReviewInput, now = new
 
 /** Числата за екраните „Днес“ и „Напредък“. */
 export async function getStats(userId: string, now = new Date()) {
-  const [profile] = await db.select().from(profiles).where(eq(profiles.id, userId));
+  const since = new Date(now.getTime() - 400 * 24 * 3600_000);
+  const [[profile], cards, logs] = await Promise.all([
+    db.select().from(profiles).where(eq(profiles.id, userId)),
+    db.select({ state: srsCards.state, stability: srsCards.stability, due: srsCards.due, suspended: srsCards.suspended }).from(srsCards).where(eq(srsCards.userId, userId)),
+    db.select({ at: reviewLogs.reviewedAt, correct: reviewLogs.correct, cardId: reviewLogs.cardId, before: reviewLogs.cardStateBefore }).from(reviewLogs).where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, since))),
+  ]);
   const tz = profile?.timezone ?? "Europe/Sofia";
-  const cards = await db.select({ state: srsCards.state, stability: srsCards.stability, due: srsCards.due, suspended: srsCards.suspended }).from(srsCards).where(eq(srsCards.userId, userId));
   const counts = { new: 0, learning: 0, known: 0 };
   let dueNow = 0;
   for (const c of cards) {
     counts[statusOf(c)]++;
     if (!c.suspended && c.state !== 0 && c.due <= now) dueNow++;
   }
-  const since = new Date(now.getTime() - 400 * 24 * 3600_000);
-  const logs = await db.select({ at: reviewLogs.reviewedAt, correct: reviewLogs.correct }).from(reviewLogs).where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, since)));
 
   const perDay = new Map<string, number>();
   for (const l of logs) perDay.set(dayKey(l.at, tz), (perDay.get(dayKey(l.at, tz)) ?? 0) + 1);
@@ -169,11 +182,8 @@ export async function getStats(userId: string, now = new Date()) {
   const retention = month.length >= 10 ? Math.round((100 * month.filter((l) => l.correct).length) / month.length) : null;
 
   const sod = startOfDay(now, tz);
-  const introduced = await db
-    .select({ n: sql<number>`count(distinct ${reviewLogs.cardId})::int` })
-    .from(reviewLogs)
-    .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, sod), sql`(${reviewLogs.cardStateBefore}->>'state') = '0'`));
-  const newAvailable = Math.max(0, Math.min(counts.new, (profile?.dailyNewWords ?? 8) - (introduced[0]?.n ?? 0)));
+  const introducedIds = new Set(logs.filter((l) => l.at >= sod && (l.before as { state?: number } | null)?.state === 0).map((l) => l.cardId));
+  const newAvailable = Math.max(0, Math.min(counts.new, (profile?.dailyNewWords ?? 8) - introducedIds.size));
 
   return {
     counts,

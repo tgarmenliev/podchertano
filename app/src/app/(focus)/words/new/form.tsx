@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { POS } from "@/modules/vocab/pos";
 import { addWordAction, type FormState } from "../actions";
+import { keepFocus } from "@/design/keep-focus";
 
 export function NewWordForm() {
   const [state, action, pending] = useActionState<FormState, FormData>(addWordAction, {});
@@ -45,7 +46,7 @@ export function NewWordForm() {
           {state.error}
         </p>
       )}
-      <button type="submit" className="btn btn-primary w-full" disabled={pending}>
+      <button type="submit" className="btn btn-primary w-full" onMouseDown={keepFocus} disabled={pending}>
         {pending ? "Записваме…" : "Добави в речника"}
       </button>
     </form>

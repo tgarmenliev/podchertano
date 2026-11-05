@@ -17,7 +17,12 @@ export default async function Words({ searchParams }: { searchParams: Promise<{ 
   const { q = "", s = "" } = await searchParams;
   const status = s === "new" || s === "learning" || s === "known" ? s : undefined;
   const all = await listWords(user.id);
-  const words = await listWords(user.id, { q, status });
+  const needle = q.trim().toLowerCase();
+  const words = all.filter(
+    (w) =>
+      (!status || w.status === status) &&
+      (!needle || w.lemma.includes(needle) || w.translationBg.toLowerCase().includes(needle) || (w.phrase ?? "").includes(needle)),
+  );
   const href = (v: string) => `/words?${new URLSearchParams({ ...(q ? { q } : {}), ...(v ? { s: v } : {}) })}`;
 
   return (

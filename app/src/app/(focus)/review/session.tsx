@@ -9,6 +9,7 @@ import { IconCheck, IconClose, IconEye, IconSpeaker } from "@/design/icons";
 import type { QueueItem } from "@/modules/review/service";
 import { posLabel } from "@/modules/vocab/pos";
 import { submitReviewAction } from "./actions";
+import { keepFocus } from "@/design/keep-focus";
 
 const modeLabel = { recognize: "Помниш ли думата?", type_from_bg: "Как е на английски?", cloze: "Допълни думата" } as const;
 const send = (i: OutboxItem) => submitReviewAction(i);
@@ -243,7 +244,7 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
         <div className="mt-auto" style={{ paddingBottom: "max(var(--safe-bottom), 16px)" }}>
           <div className="flex items-center gap-2 pb-3 pt-6">
             {card.mode !== "recognize" && (
-              <button type="button" className="btn btn-ghost !min-h-11 !px-3 text-[15px]" onClick={() => setHint(true)} disabled={locked || hint}>
+              <button type="button" className="btn btn-ghost !min-h-11 !px-3 text-[15px]" onMouseDown={keepFocus} onClick={() => setHint(true)} disabled={locked || hint}>
                 <IconEye width={20} height={20} />
                 Подсказка
               </button>
@@ -270,11 +271,11 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
               </button>
             )
           ) : locked ? (
-            <button type="button" className="btn btn-primary w-full" onClick={() => advance(wrong)}>
+            <button type="button" className="btn btn-primary w-full" onMouseDown={keepFocus} onClick={() => advance(wrong)}>
               Следваща
             </button>
           ) : (
-            <button type="button" className="btn btn-primary w-full" onClick={check} disabled={!value.trim()}>
+            <button type="button" className="btn btn-primary w-full" onMouseDown={keepFocus} onClick={check} disabled={!value.trim()}>
               Провери
             </button>
           )}

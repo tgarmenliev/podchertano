@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { authClient } from "@/core/auth/client";
+import { keepFocus } from "@/design/keep-focus";
 
 export function PasswordForm() {
   const [cur, setCur] = useState("");
@@ -45,7 +46,7 @@ export function PasswordForm() {
           {msg.text}
         </p>
       )}
-      <button type="submit" className="btn btn-primary w-full" disabled={busy || !cur || !next || !again}>
+      <button type="submit" className="btn btn-primary w-full" onMouseDown={keepFocus} disabled={busy || !cur || !next || !again}>
         {busy ? "Сменяме…" : "Смени паролата"}
       </button>
     </form>

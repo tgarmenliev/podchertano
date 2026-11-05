@@ -1,6 +1,6 @@
-import { requireActive } from "@/core/auth/session";
+import { requireSession } from "@/core/auth/session";
 
 export default async function FocusLayout({ children }: { children: React.ReactNode }) {
-  await requireActive();
+  await requireSession();
   return <>{children}</>;
 }
