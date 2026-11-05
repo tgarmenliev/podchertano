@@ -15,7 +15,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
         <h1 className="text-[34px] font-semibold leading-none tracking-tight">
           <span className="relative inline-block">
             Подчертано
-            <span className="wave-line absolute inset-x-0 -bottom-3" style={{ height: 6 }} />
+            <span className="wave-line wave-draw absolute inset-x-0 -bottom-3" style={{ height: 6 }} />
           </span>
         </h1>
         <p className="mt-9 max-w-[32ch] text-[19px] leading-snug">Подчертаваш непознатите думи. Те стават твоят речник.</p>

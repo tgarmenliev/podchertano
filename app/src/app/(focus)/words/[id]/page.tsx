@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireActive } from "@/core/auth/session";
 import { IconBack } from "@/design/icons";
+import { SpeakButton } from "@/design/speak";
 import { StatusMark } from "@/design/status-mark";
 import { posLabel } from "@/modules/vocab/pos";
 import { getWord } from "@/modules/vocab/service";
@@ -45,7 +46,10 @@ export default async function WordPage({ params }: { params: Promise<{ id: strin
 
       <main className="space-y-8 px-5 pb-16 pt-6">
         <section>
-          <p className="read text-[36px] font-medium leading-tight">{w.phrase ?? w.lemma}</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="read text-[36px] font-medium leading-tight">{w.phrase ?? w.lemma}</p>
+            <SpeakButton text={w.phrase ?? w.lemma} />
+          </div>
           <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
             {w.pos && <span className="text-sm text-ink-2">{posLabel(w.pos)}</span>}
             <StatusMark status={w.status as "new" | "learning" | "known"} />

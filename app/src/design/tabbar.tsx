@@ -35,8 +35,8 @@ export function TabBar() {
                   {label}
                   {/* активният раздел е подчертан, както всичко останало в приложението */}
                   <span
-                    className="wave-line absolute inset-x-0 -bottom-[5px]"
-                    style={{ height: 4, opacity: active ? 1 : 0, transition: "opacity .15s" }}
+                    className="wave-line wave-progress absolute inset-x-0 -bottom-[5px]"
+                    style={{ height: 4, clipPath: active ? "inset(0 0 0 0)" : "inset(0 100% 0 0)" }}
                   />
                 </span>
               </Link>

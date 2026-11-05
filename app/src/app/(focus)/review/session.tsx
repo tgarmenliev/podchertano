@@ -92,7 +92,7 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
   }
 
   const target = card ? (card.phrase ?? card.lemma) : "";
-  const wave = useMemo(() => ({ clipPath: `inset(0 ${100 - pct}% 0 0)`, transition: "clip-path .35s var(--ease-out)" }), [pct]);
+  const wave = useMemo(() => ({ clipPath: `inset(0 ${100 - pct}% 0 0)` }), [pct]);
 
   if (finishedAll) {
     return (
@@ -125,7 +125,7 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
         </Link>
         <div className="relative h-[6px] flex-1" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label="Напредък в преговора">
           <div className="absolute inset-0 top-[2px] h-[2px] rounded bg-line" />
-          <div className="wave-line absolute inset-0" style={wave} />
+          <div className="wave-line wave-progress absolute inset-0" style={wave} />
         </div>
         <p className="w-14 shrink-0 pr-3 text-right text-sm tabular-nums text-ink-2">
           {Math.min(done + 1, total)} / {total}
@@ -221,7 +221,7 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
         )}
 
         {locked && (
-          <div className="mt-4 rounded-[var(--radius-m)] px-4 py-3" style={{ background: wrong ? "var(--surface)" : "var(--ok-tint)" }} role="status">
+          <div className="enter mt-4 rounded-[var(--radius-m)] px-4 py-3" style={{ background: wrong ? "var(--surface)" : "var(--ok-tint)" }} role="status">
             <p className="flex items-center gap-2 font-semibold" style={{ color: wrong ? "var(--ink)" : "var(--ok)" }}>
               {wrong ? (
                 "Не е точно"

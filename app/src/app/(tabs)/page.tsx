@@ -20,7 +20,7 @@ export default async function Today() {
       <header className="flex items-center justify-between py-2">
         <span className="relative text-[19px] font-semibold tracking-tight">
           Подчертано
-          <span className="wave-line absolute inset-x-0 -bottom-[7px]" style={{ height: 5 }} />
+          <span className="wave-line wave-draw absolute inset-x-0 -bottom-[7px]" style={{ height: 5 }} />
         </span>
         <div className="flex items-center gap-1">
           {s.streak > 0 && (
@@ -94,7 +94,7 @@ export default async function Today() {
             <h2 id="recent" className="text-base font-semibold">Последни страници</h2>
             <Link href="/pages" className="text-sm text-ink-2 underline-offset-4 hover:underline">Всички</Link>
           </div>
-          <ul className="mt-3 divide-y divide-line border-y border-line">
+          <ul className="stagger mt-3 divide-y divide-line border-y border-line">
             {recent.map((p) => (
               <li key={p.id}>
                 <Link href={`/pages/${p.id}`} className="flex items-center gap-4 py-3 active:bg-surface">

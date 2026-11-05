@@ -37,6 +37,12 @@ export default async function PageDetail({ params, searchParams }: { params: Pro
             Страницата е запазена. {Number(isNew) > 0 ? `Нови думи в речника: ${isNew}.` : "Всички думи вече бяха в речника."}
           </p>
         )}
+        {isNew && (
+          <div className="enter flex flex-col gap-2">
+            <Link href="/" className="btn btn-primary w-full">Към началото</Link>
+            {s.saved.length > 0 && <Link href={`/pages/${s.id}/sheet`} className="btn btn-secondary w-full">Лист за преписване</Link>}
+          </div>
+        )}
 
         <section aria-labelledby="saved">
           <h2 id="saved" className="text-base font-semibold">Думи от тази страница</h2>

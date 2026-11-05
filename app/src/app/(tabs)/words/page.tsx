@@ -63,7 +63,7 @@ export default async function Words({ searchParams }: { searchParams: Promise<{ 
           {words.length === 0 ? (
             <p className="mt-8 text-ink-2">Нищо не съвпада.</p>
           ) : (
-            <ul className="mt-3 divide-y divide-line border-y border-line">
+            <ul className="stagger mt-3 divide-y divide-line border-y border-line">
               {words.map((w) => (
                 <li key={w.id}>
                   <Link href={`/words/${w.id}`} className="flex items-center justify-between gap-4 py-3 active:bg-surface">

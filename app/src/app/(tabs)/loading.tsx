@@ -1,7 +1,7 @@
 /* Показва се мигновено при докосване на раздел, докато идват данните. */
 export default function Loading() {
   return (
-    <div aria-busy="true" aria-label="Зареждане" className="pt-2">
+    <div aria-busy="true" aria-label="Зареждане" className="skeleton pt-2">
       <div className="h-8 w-40 rounded bg-surface-2" />
       <div className="mt-10 h-14 w-24 rounded bg-surface-2" />
       <div className="mt-4 h-4 w-56 rounded bg-surface" />

@@ -28,7 +28,7 @@ export default async function Pages() {
             <Link href="/scan" className="btn btn-primary mt-6">Снимай страница</Link>
           </div>
         ) : (
-          <ul className="divide-y divide-line border-y border-line">
+          <ul className="stagger divide-y divide-line border-y border-line">
             {list.map((p) => (
               <li key={p.id}>
                 <Link href={`/pages/${p.id}`} className="flex items-center gap-4 py-3 active:bg-surface">

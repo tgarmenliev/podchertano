@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { IconClose, IconSpeaker } from "@/design/icons";
+import { useMemo, useState } from "react";
+import { IconClose } from "@/design/icons";
+import { SpeakButton } from "@/design/speak";
 import { cleanEdges, sentenceAround } from "@/modules/scan/sentences";
 import type { Enriched } from "@/core/ai/enrich";
 import { enrichAction } from "../../scan/actions";
@@ -98,37 +99,31 @@ export function Viewer({ id, words, width, height, saved, aiAvailable }: { id: s
   );
 }
 
-type Phase = "loading" | "ready" | "error" | "adding" | "added";
+type Phase = "idle" | "loading" | "ready" | "error" | "adding" | "added";
 
 function LookupSheet({ sourceId, words, range, saved, aiAvailable, onClose, onAdded }: { sourceId: string; words: W[]; range: [number, number]; saved: SavedRef[]; aiAvailable: boolean; onClose: () => void; onAdded: () => void }) {
   const ids = useMemo(() => words.filter((w) => w.i >= range[0] && w.i <= range[1]).map((w) => w.i), [words, range]);
   const surface = useMemo(() => cleanEdges(words.filter((w) => ids.includes(w.i)).map((w) => w.t).join(" ")), [words, ids]);
   const sentence = useMemo(() => sentenceAround(words, range[0]), [words, range]);
-  const [phase, setPhase] = useState<Phase>(aiAvailable ? "loading" : "ready");
+  const [phase, setPhase] = useState<Phase>("idle");
   const [res, setRes] = useState<Enriched | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [manual, setManual] = useState("");
-  const asked = useRef(false);
   const known = saved.find((s) => s.key === surface.toLowerCase() || (res && s.key === (res.phrase ?? res.lemma).toLowerCase()));
 
-  useEffect(() => {
-    if (!aiAvailable || asked.current) return;
-    asked.current = true;
-    let live = true;
-    enrichAction([{ id: 0, surface, sentence }]).then((r) => {
-      if (!live) return;
-      if (r.ok && r.items[0]) {
-        setRes(r.items[0]);
-        setPhase("ready");
-      } else {
-        setErr(r.ok ? "Не получих превод. Опитай пак." : r.error);
-        setPhase("error");
-      }
-    });
-    return () => {
-      live = false;
-    };
-  }, [aiAvailable, surface, sentence]);
+  /** Заявка само при натискане на „Преведи“: докосването на думи не струва нищо. */
+  async function translate() {
+    setErr(null);
+    setPhase("loading");
+    const r = await enrichAction([{ id: 0, surface, sentence }]);
+    if (r.ok && r.items[0]) {
+      setRes(r.items[0]);
+      setPhase("ready");
+    } else {
+      setErr(r.ok ? "Не получих превод. Опитай пак." : r.error);
+      setPhase("error");
+    }
+  }
 
   const translation = res?.translation_bg ?? manual.trim();
 
@@ -158,38 +153,30 @@ function LookupSheet({ sourceId, words, range, saved, aiAvailable, onClose, onAd
     setTimeout(onClose, 900);
   }
 
-  function speak() {
-    if (!("speechSynthesis" in window)) return;
-    const u = new SpeechSynthesisUtterance(surface);
-    u.lang = "en-GB";
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
-  }
-
   return (
-    <div role="dialog" aria-label={`Превод на „${surface}“`} className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg" style={{ paddingBottom: "max(var(--safe-bottom), 16px)" }}>
+    <div role="dialog" aria-label={`Превод на „${surface}“`} className="sheet-up fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg" style={{ paddingBottom: "max(var(--safe-bottom), 16px)" }}>
       <div className="mx-auto max-h-[62vh] max-w-xl overflow-y-auto px-5 pb-1 pt-4">
         <div className="flex items-start justify-between gap-3">
           <p className="read text-[26px] font-medium leading-tight">{surface}</p>
           <div className="-mr-2 flex shrink-0 items-center">
-            <button type="button" aria-label="Чуй" className="grid h-10 w-10 place-items-center rounded-full text-ink-2 active:bg-surface" onClick={speak}>
-              <IconSpeaker width={20} height={20} />
-            </button>
+            <SpeakButton text={surface} />
             <button type="button" aria-label="Затвори" className="grid h-10 w-10 place-items-center rounded-full text-ink-2 active:bg-surface" onClick={onClose}>
               <IconClose width={20} height={20} />
             </button>
           </div>
         </div>
 
+        {phase === "idle" && sentence && <p className="read mt-2 text-[15px] italic leading-snug text-ink-2">{sentence}</p>}
+
         {phase === "loading" && (
           <div role="status" aria-live="polite" className="mt-4">
             <p className="text-ink-2">Превеждам според изречението…</p>
-            <div className="wave-line mt-2 w-24" />
+            <div className="wave-line wave-loading mt-2 w-24" />
           </div>
         )}
 
         {res && (
-          <div className="mt-3">
+          <div className="enter mt-3">
             <p className="text-[22px] font-medium leading-snug">{res.translation_bg}</p>
             {res.translation_alt_bg && <p className="mt-1 text-ink-2">Още: {res.translation_alt_bg}</p>}
             {res.meaning_bg && <p className="mt-3 text-[15px] leading-snug">{res.meaning_bg}</p>}
@@ -211,8 +198,12 @@ function LookupSheet({ sourceId, words, range, saved, aiAvailable, onClose, onAd
             <p role="status" className="py-3 text-[15px] font-medium" style={{ color: "var(--ok)" }}>Добавена в речника.</p>
           ) : known ? (
             <Link href={`/words/${known.id}`} className="btn btn-secondary flex-1">Вече е в речника</Link>
+          ) : aiAvailable && !res ? (
+            <button type="button" className="btn btn-primary flex-1" onClick={translate} disabled={phase === "loading"}>
+              {phase === "loading" ? "Превеждам…" : phase === "error" ? "Опитай пак" : "Преведи"}
+            </button>
           ) : (
-            <button type="button" className="btn btn-primary flex-1" onClick={add} disabled={!translation || phase === "adding" || phase === "loading"}>
+            <button type="button" className="btn btn-primary flex-1" onClick={add} disabled={!translation || phase === "adding"}>
               {phase === "adding" ? "Добавям…" : "Добави в речника"}
             </button>
           )}

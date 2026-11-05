@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { keepFocus } from "@/design/keep-focus";
 import { IconBack, IconCamera, IconClose } from "@/design/icons";
+import { SpeakButton } from "@/design/speak";
 import { ImageError } from "@/modules/scan/image";
 import { scanPage, type Step } from "@/modules/scan/ocr";
 import { itemsFromSelection, paragraphs, type Item } from "@/modules/scan/sentences";
@@ -193,7 +194,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
         </header>
         {stage === "start" ? (
           <>
-            <div className="mt-6">
+            <div className="enter mt-6">
               <h1 className="text-[30px] font-semibold leading-tight tracking-tight">Снимай страница</h1>
               <p className="mt-4 max-w-[38ch] text-ink-2">Подчертай непознатите думи с молив, постави страницата на светло и снимай целия текст. Ние ще отбележим подчертаните думи, а ти ще ги провериш.</p>
               <ul className="mt-6 max-w-[40ch] space-y-2 text-[15px] text-ink-2">
@@ -221,11 +222,11 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
             </div>
           </>
         ) : (
-          <div className="mt-16" role="status" aria-live="polite">
+          <div className="enter mt-16" role="status" aria-live="polite">
             <h1 className="text-[26px] font-semibold leading-tight tracking-tight">{stepText[step]}…</h1>
             <div className="relative mt-6 h-[6px]">
               <div className="absolute inset-0 top-[2px] h-[2px] rounded bg-line" />
-              <div className="wave-line absolute inset-0" style={{ clipPath: `inset(0 ${100 - Math.round(((idx + (step === "read" ? pct : 0)) / 4) * 100)}% 0 0)`, transition: "clip-path .3s var(--ease-out)" }} />
+              <div className="wave-line wave-progress absolute inset-0" style={{ clipPath: `inset(0 ${100 - Math.round(((idx + (step === "read" ? pct : 0)) / 4) * 100)}% 0 0)` }} />
             </div>
             <ol className="mt-8 space-y-2 text-[15px]">
               {(["prepare", "load", "read", "underline"] as Step[]).map((s, k) => (
@@ -386,7 +387,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
                 </div>
                 <div className="relative mt-3 h-[6px]">
                   <div className="absolute inset-0 top-[2px] h-[2px] rounded bg-line" />
-                  <div className="wave-line absolute inset-0" style={{ clipPath: `inset(0 ${100 - Math.round((prog.done / prog.total) * 100)}% 0 0)`, transition: "clip-path .3s var(--ease-out)" }} />
+                  <div className="wave-line wave-progress absolute inset-0" style={{ clipPath: `inset(0 ${100 - Math.round((prog.done / prog.total) * 100)}% 0 0)` }} />
                 </div>
                 <p className="mt-3 text-[13px] text-ink-2">Резултатите се появяват под всяка дума. Не затваряй страницата.</p>
               </div>
@@ -407,11 +408,12 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
 
         {error && <p role="alert" className="mb-5 rounded-[var(--radius-m)] bg-surface px-4 py-3 text-[15px]">{error}</p>}
 
-        <ul className="space-y-8">
+        <ul className="stagger space-y-8">
           {drafts.map((d) => (
             <li key={d.key} className="border-t border-line pt-5">
               <div className="flex items-start justify-between gap-3">
                 <p className="read text-[26px] font-medium leading-tight">{d.surface}</p>
+                <SpeakButton text={d.surface} />
                 <button type="button" aria-label={`Махни „${d.surface}“`} className="-mr-2 grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-3 active:bg-surface" onClick={() => setDrafts((ds) => ds.filter((x) => x.key !== d.key))} disabled={saving || busy}>
                   <IconClose width={20} height={20} />
                 </button>
