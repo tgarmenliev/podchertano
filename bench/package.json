@@ -1,5 +1,6 @@
 {
-  "name": "bench", "type": "module",
+  "name": "bench",
+  "type": "commonjs",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -9,9 +10,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "@napi-rs/canvas": "^1.1.0",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "tesseract.js": "^7.0.0"
   }
 }
