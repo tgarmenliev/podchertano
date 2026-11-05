@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireActive } from "@/core/auth/session";
 import { IconBack } from "@/design/icons";
+import { aiEnabled } from "@/core/ai/config";
 import { getSource } from "@/modules/scan/service";
+import { listWords } from "@/modules/vocab/service";
 import { deleteSourceAction } from "../actions";
 import { DeletePage } from "./delete-page";
 import { Viewer } from "./viewer";
@@ -17,7 +19,7 @@ export default async function PageDetail({ params, searchParams }: { params: Pro
   const { id } = await params;
   const { new: isNew } = await searchParams;
   if (!z.uuid().safeParse(id).success) notFound();
-  const s = await getSource(user.id, id);
+  const [s, all] = await Promise.all([getSource(user.id, id), listWords(user.id)]);
   if (!s) notFound();
   const words = (s.words as W[] | null) ?? [];
 
@@ -59,7 +61,7 @@ export default async function PageDetail({ params, searchParams }: { params: Pro
           )}
         </section>
 
-        <Viewer id={s.id} words={words} width={s.imageW ?? 1} height={s.imageH ?? 1} />
+        <Viewer id={s.id} words={words} width={s.imageW ?? 1} height={s.imageH ?? 1} saved={all.map((w) => ({ id: w.id, key: (w.phrase ?? w.lemma).toLowerCase() }))} aiAvailable={aiEnabled()} />
 
         <section className="border-t border-line pt-6">
           <form action={deleteSourceAction}>

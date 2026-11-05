@@ -74,3 +74,17 @@ describe("редове и абзаци от кутии", () => {
     expect(buildLines([])).toEqual([]);
   });
 });
+
+import { cleanEdges, sentenceAround } from "./sentences";
+
+describe("превод при докосване", () => {
+  const words = mk("He repaired the fence. It was old, and he knew it.").map((w, i) => ({ ...w, i }));
+  it("намира изречението на думата в абзаца", () => {
+    expect(sentenceAround(words, 2)).toBe("He repaired the fence.");
+    expect(sentenceAround(words, 6)).toBe("It was old, and he knew it.");
+  });
+  it("маха пунктуацията по краищата", () => {
+    expect(cleanEdges("old,")).toBe("old");
+    expect(cleanEdges("\"Don't")).toBe("Don't");
+  });
+});

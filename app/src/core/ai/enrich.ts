@@ -44,7 +44,7 @@ export async function enrichWords(req: EnrichRequest, deps: Deps = {}): Promise<
   if (!req.items.length) return { items: [], model: "", tokensIn: 0, tokensOut: 0, estCostMicroEur: 0 };
   if (req.items.length > 40) throw new Error("Твърде много думи наведнъж");
   const model = deps.model ?? aiLimits().model;
-  const res = await (deps.fetch ?? fetch)("https://api.openai.com/v1/chat/completions", {
+  const res = await (deps.fetch ?? fetch)(`${process.env.OPENAI_BASE_URL ?? "https://api.openai.com"}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${deps.apiKey ?? process.env.OPENAI_API_KEY}` },
     body: JSON.stringify({

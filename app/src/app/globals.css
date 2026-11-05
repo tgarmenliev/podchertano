@@ -179,6 +179,8 @@ button { font: inherit; color: inherit; }
 .scroll-pad-bottom { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 24px); }
 
 /* ───────── Печат (Лист за преписване) ───────── */
+@page { margin: 12mm 14mm; }
+
 @media print {
   :root { color-scheme: light; }
   body { background: #fff !important; color: #000 !important; }

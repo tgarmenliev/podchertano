@@ -27,9 +27,9 @@ export type Item = {
 const strip = (s: string) => s.replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9']+$/g, "");
 
 /** Разделя абзац на изречения и връща за всяка дума в кое изречение попада. */
-function sentenceOf(words: ScanWord[]): Map<number, string> {
+function sentenceOf(words: { i: number; t: string }[]): Map<number, string> {
   const map = new Map<number, string>();
-  let buf: ScanWord[] = [];
+  let buf: { i: number; t: string }[] = [];
   const flush = () => {
     const text = buf.map((w) => w.t).join(" ");
     for (const w of buf) map.set(w.i, text);
@@ -70,3 +70,12 @@ export function itemsFromSelection(words: ScanWord[]): Item[] {
   }
   return items;
 }
+
+/** Изречението (в рамките на абзаца), в което е думата с номер i. */
+export function sentenceAround(words: { i: number; t: string; para: number }[], i: number): string {
+  const w = words.find((x) => x.i === i);
+  if (!w) return "";
+  return sentenceOf(words.filter((x) => x.para === w.para)).get(i) ?? w.t;
+}
+
+export const cleanEdges = strip;

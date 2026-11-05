@@ -5,8 +5,8 @@
 export const aiEnabled = () => process.env.AI_ENABLED === "1" && !!process.env.OPENAI_API_KEY;
 
 export const aiLimits = () => ({
-  /** обогатявания (заявки) на потребител на ден */
-  perUserDaily: Number(process.env.AI_DAILY_LIMIT ?? 8),
+  /** заявки на потребител на ден (превод на страница = няколко заявки по 5 думи; докосване на дума = 1) */
+  perUserDaily: Number(process.env.AI_DAILY_LIMIT ?? 60),
   /** твърд месечен таван за целия сайт, в евро (прекъсвач) */
   monthlyCapEur: Number(process.env.AI_MONTHLY_CAP_EUR ?? 5),
   model: process.env.AI_ENRICH_MODEL ?? "gpt-6.1-terra",

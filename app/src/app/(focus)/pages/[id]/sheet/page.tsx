@@ -37,27 +37,27 @@ export default async function Sheet({ params }: { params: Promise<{ id: string }
         <h1 className="flex-1 truncate text-[17px] font-semibold">Лист за преписване</h1>
         <PrintButton />
       </header>
-      <main className="px-5 pb-16 pt-5">
+      <main className="px-5 pb-16 pt-5 print:px-0 print:pb-0 print:pt-0">
         <p className="no-print mb-5 max-w-[44ch] text-[15px] text-ink-2">Препиши думите в тетрадката си: писането на ръка помага да ги запомниш. После ги преговаряш тук.</p>
-        <h2 className="mb-3 hidden text-lg font-semibold print:block">{s.title}</h2>
+        <h2 className="mb-2 hidden text-[13pt] font-semibold print:block">{s.title}</h2>
         {rows.length === 0 ? (
           <p className="text-ink-2">От тази страница няма запазени думи.</p>
         ) : (
-          <table className="w-full border-collapse text-left">
+          <table className="w-full border-collapse text-left text-[15px] print:text-[10.5pt]">
             <thead>
-              <tr className="border-b-2 border-ink text-sm text-ink-2">
-                <th className="py-2 pr-4 font-medium">Английски</th>
-                <th className="py-2 font-medium">Български</th>
+              <tr className="border-b-2 border-ink text-[13px] text-ink-2 print:text-[9pt] print:text-black">
+                <th className="w-[38%] py-2 pr-4 font-medium print:py-1">Английски</th>
+                <th className="py-2 font-medium print:py-1">Български</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id + r.sentence} className="border-b border-line align-top">
-                  <td className="read py-3 pr-4 text-[22px] font-medium leading-snug">{r.phrase ?? r.lemma}</td>
-                  <td className="py-3 text-[19px] leading-snug">
+                <tr key={r.id + r.sentence} className="border-b border-line align-top print:border-neutral-400">
+                  <td className="read py-2.5 pr-4 text-[17px] font-medium leading-snug print:py-[3pt] print:text-[11pt]">{r.phrase ?? r.lemma}</td>
+                  <td className="py-2.5 text-[15px] leading-snug print:py-[3pt] print:text-[10.5pt]">
                     {r.tr}
                     {r.alt && <span className="text-ink-2">, {r.alt}</span>}
-                    {r.meaning && <span className="mt-1 block text-[14px] text-ink-2">{r.meaning}</span>}
+                    {r.meaning && <span className="mt-0.5 block text-[12.5px] text-ink-2 print:text-[8.5pt] print:text-black">{r.meaning}</span>}
                   </td>
                 </tr>
               ))}

@@ -88,3 +88,16 @@ export async function deleteSource(userId: string, id: string) {
   // думите остават в речника; изчезват само страницата, снимката (каскадно) и връзките към нея
   await db.delete(sources).where(and(eq(sources.id, id), eq(sources.userId, userId)));
 }
+
+/** Добавя дума от запазена страница (докосната в текста) и я отбелязва като избрана в страницата. */
+export async function addFromPage(userId: string, sourceId: string, item: Omit<NewWord, "sourceId">, wordIds: number[]) {
+  return db.transaction(async (tx) => {
+    const [src] = await tx.select({ id: sources.id, words: sources.words }).from(sources).where(and(eq(sources.id, sourceId), eq(sources.userId, userId))).for("update");
+    if (!src) throw new Error("Страницата не е намерена");
+    const r = await addWord(userId, { ...item, sourceId }, tx);
+    const ids = new Set(wordIds);
+    const words = ((src.words as ScanWord[] | null) ?? []).map((w) => (ids.has(w.i) ? { ...w, sel: true } : w));
+    await tx.update(sources).set({ words }).where(eq(sources.id, sourceId));
+    return r;
+  });
+}

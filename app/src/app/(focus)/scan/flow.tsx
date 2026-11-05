@@ -20,6 +20,7 @@ const stepText: Record<Step, string> = {
   read: "Чета текста",
   underline: "Търся подчертаното",
 };
+const BATCH = 5;
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
@@ -36,6 +37,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [busy, setBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState<string | null>(null);
+  const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
   const [extras, setExtras] = useState<{ surface: string; sentence: string }[]>([]);
   const [xWord, setXWord] = useState("");
   const [xSent, setXSent] = useState("");
@@ -104,20 +106,36 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, drafts.length]);
 
+  /** Превежда на партиди по 5 думи, за да се вижда напредъкът и резултатите да идват един по един. */
   async function autofill() {
+    const keys = drafts.map((d) => d.key);
+    const todo = drafts.map((d, i) => ({ d, i })).filter((x) => !x.d.translation.trim());
+    if (!todo.length) return;
     setBusy(true);
     setAiMsg(null);
-    const res = await enrichAction(drafts.map((d, i) => ({ id: i, surface: d.surface, sentence: d.sentence })));
+    setProg({ done: 0, total: todo.length });
+    let done = 0;
+    let stopped: string | null = null;
+    for (let k = 0; k < todo.length; k += BATCH) {
+      const batch = todo.slice(k, k + BATCH);
+      const res = await enrichAction(batch.map(({ d, i }) => ({ id: i, surface: d.surface, sentence: d.sentence })));
+      if (!res.ok) {
+        stopped = res.error;
+        break;
+      }
+      setDrafts((ds) =>
+        ds.map((d) => {
+          const e = res.items.find((x) => x.id === keys.indexOf(d.key));
+          if (!e) return d;
+          return { ...d, lemma: e.lemma, translation: e.translation_bg, alt: e.translation_alt_bg ?? "", meaning: e.meaning_bg ?? "", example: e.example_en ?? "", pos: e.pos === "other" ? "" : e.pos, phrase: e.phrase ?? d.phrase };
+        }),
+      );
+      done += batch.length;
+      setProg({ done, total: todo.length });
+    }
     setBusy(false);
-    if (!res.ok) return setAiMsg(res.error);
-    setDrafts((ds) =>
-      ds.map((d, i) => {
-        const e = res.items.find((x) => x.id === i);
-        if (!e) return d;
-        return { ...d, lemma: e.lemma, translation: e.translation_bg, alt: e.translation_alt_bg ?? "", meaning: e.meaning_bg ?? "", example: e.example_en ?? "", pos: e.pos === "other" ? "" : e.pos, phrase: e.phrase ?? d.phrase };
-      }),
-    );
-    setAiMsg("Попълнено. Провери преводите, преди да запазиш.");
+    setProg(null);
+    setAiMsg(stopped ? `${stopped} Преведени: ${done} от ${todo.length}.` : "Готово. Провери преводите и запази.");
   }
 
   const ready = drafts.length > 0 && drafts.every((d) => d.translation.trim());
@@ -360,10 +378,28 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
       <main className="px-5 pb-44 pt-5">
         {aiAvailable ? (
           <div className="mb-6">
-            <button type="button" className="btn btn-secondary w-full" onClick={autofill} disabled={busy || saving || drafts.length === 0}>
-              {busy ? "Попълваме…" : "Попълни автоматично"}
-            </button>
-            {aiMsg && <p role="status" className="mt-3 text-[14px] text-ink-2">{aiMsg}</p>}
+            {busy && prog ? (
+              <div role="status" aria-live="polite" className="rounded-[var(--radius-m)] bg-surface px-4 py-4">
+                <div className="flex items-baseline justify-between">
+                  <p className="font-medium">Превеждаме думите…</p>
+                  <p className="text-sm tabular-nums text-ink-2">{prog.done} от {prog.total}</p>
+                </div>
+                <div className="relative mt-3 h-[6px]">
+                  <div className="absolute inset-0 top-[2px] h-[2px] rounded bg-line" />
+                  <div className="wave-line absolute inset-0" style={{ clipPath: `inset(0 ${100 - Math.round((prog.done / prog.total) * 100)}% 0 0)`, transition: "clip-path .3s var(--ease-out)" }} />
+                </div>
+                <p className="mt-3 text-[13px] text-ink-2">Резултатите се появяват под всяка дума. Не затваряй страницата.</p>
+              </div>
+            ) : (
+              <>
+                {drafts.some((d) => !d.translation.trim()) && (
+                  <button type="button" className="btn btn-secondary w-full" onClick={autofill} disabled={saving || drafts.length === 0}>
+                    {drafts.some((d) => d.translation.trim()) ? "Преведи останалите" : "Попълни автоматично"}
+                  </button>
+                )}
+                {aiMsg && <p role="status" className="mt-3 text-[14px] text-ink-2">{aiMsg}</p>}
+              </>
+            )}
           </div>
         ) : (
           <p className="mb-6 rounded-[var(--radius-m)] bg-surface px-4 py-3 text-[14px] leading-snug text-ink-2">Напиши превода на всяка дума. Изречението е показано, за да избереш значението, което е в текста.</p>
@@ -376,7 +412,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
             <li key={d.key} className="border-t border-line pt-5">
               <div className="flex items-start justify-between gap-3">
                 <p className="read text-[26px] font-medium leading-tight">{d.surface}</p>
-                <button type="button" aria-label={`Махни „${d.surface}“`} className="-mr-2 grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-3 active:bg-surface" onClick={() => setDrafts((ds) => ds.filter((x) => x.key !== d.key))} disabled={saving}>
+                <button type="button" aria-label={`Махни „${d.surface}“`} className="-mr-2 grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-3 active:bg-surface" onClick={() => setDrafts((ds) => ds.filter((x) => x.key !== d.key))} disabled={saving || busy}>
                   <IconClose width={20} height={20} />
                 </button>
               </div>
@@ -386,7 +422,14 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
               <label className="mb-2 mt-4 block text-sm text-ink-2" htmlFor={`t-${d.key}`}>
                 Превод на български
               </label>
-              <input id={`t-${d.key}`} className={f} value={d.translation} onChange={(e) => update(d.key, { translation: e.target.value })} autoComplete="off" maxLength={120} disabled={saving} />
+              <input id={`t-${d.key}`} className={f} value={d.translation} onChange={(e) => update(d.key, { translation: e.target.value })} autoComplete="off" maxLength={120} disabled={saving || (busy && !d.translation)} placeholder={busy && !d.translation ? "превежда се…" : ""} />
+              {(d.alt || d.meaning || d.example) && (
+                <div className="mt-3 space-y-1.5 text-[15px] leading-snug">
+                  {d.alt && <p className="text-ink-2">Още: {d.alt}</p>}
+                  {d.meaning && <p>{d.meaning}</p>}
+                  {d.example && <p className="read italic text-ink-2">{d.example}</p>}
+                </div>
+              )}
               <details className="mt-3">
                 <summary className="cursor-pointer text-sm text-ink-2">Още полета</summary>
                 <div className="mt-3 space-y-3">
@@ -413,7 +456,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
               {drafts.length - filled.length} без превод. Попълни ги или запази само готовите.
             </p>
           )}
-          <button type="button" className="btn btn-primary w-full" onMouseDown={keepFocus} disabled={saving || filled.length === 0} onClick={() => save(ready ? drafts : filled)}>
+          <button type="button" className="btn btn-primary w-full" onMouseDown={keepFocus} disabled={saving || busy || filled.length === 0} onClick={() => save(ready ? drafts : filled)}>
             {saving ? "Запазваме…" : `Запази ${ready ? drafts.length : filled.length} ${(ready ? drafts.length : filled.length) === 1 ? "дума" : "думи"}`}
           </button>
         </div>
