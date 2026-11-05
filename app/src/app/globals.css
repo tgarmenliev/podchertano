@@ -177,3 +177,11 @@ button { font: inherit; color: inherit; }
 }
 
 .scroll-pad-bottom { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 24px); }
+
+/* ───────── Печат (Лист за преписване) ───────── */
+@media print {
+  :root { color-scheme: light; }
+  body { background: #fff !important; color: #000 !important; }
+  .no-print { display: none !important; }
+  tr { break-inside: avoid; }
+}

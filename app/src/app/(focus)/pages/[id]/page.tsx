@@ -52,6 +52,11 @@ export default async function PageDetail({ params, searchParams }: { params: Pro
           ) : (
             <p className="mt-2 text-ink-2">Няма запазени думи от тази страница.</p>
           )}
+          {s.saved.length > 0 && (
+            <Link href={`/pages/${s.id}/sheet`} className="btn btn-secondary mt-4 w-full">
+              Лист за преписване
+            </Link>
+          )}
         </section>
 
         <Viewer id={s.id} words={words} width={s.imageW ?? 1} height={s.imageH ?? 1} />

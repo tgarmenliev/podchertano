@@ -28,6 +28,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("prepare");
   const [pct, setPct] = useState(0);
+  const [passNo, setPassNo] = useState(1);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [words, setWords] = useState<ScanWord[]>([]);
   const [auto, setAuto] = useState(0);
@@ -35,6 +36,9 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [busy, setBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState<string | null>(null);
+  const [extras, setExtras] = useState<{ surface: string; sentence: string }[]>([]);
+  const [xWord, setXWord] = useState("");
+  const [xSent, setXSent] = useState("");
   const photoUrl = useRef<string | null>(null);
 
   useEffect(() => () => void (photoUrl.current && URL.revokeObjectURL(photoUrl.current)), []);
@@ -46,9 +50,12 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
     setStep("prepare");
     setPct(0);
     try {
-      const r = await scanPage(file, (s, p) => {
+      const r = await scanPage(file, (s, p, k) => {
         setStep(s);
-        if (s === "read") setPct(p ?? 0);
+        if (s === "read") {
+          setPct(p ?? 0);
+          setPassNo(k ?? 1);
+        }
       });
       if (r.words.length < 5) throw new ImageError("Почти не намерих текст. Снимай по-отблизо и на по-добра светлина.");
       photoUrl.current = URL.createObjectURL(r.image);
@@ -63,13 +70,15 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
   }
 
   const paras = useMemo(() => paragraphs(words), [words]);
-  const selected = words.filter((w) => w.sel).length;
+  const selected = words.filter((w) => w.sel).length + extras.length;
   const toggle = (i: number) => setWords((ws) => ws.map((w) => (w.i === i ? { ...w, sel: !w.sel } : w)));
 
   function toWords() {
     setAiMsg(null);
+    const fromText = itemsFromSelection(words);
+    const manual: Item[] = extras.map((x, k) => ({ ids: [-1 - k], surface: x.surface, sentence: x.sentence || x.surface }));
     setDrafts(
-      itemsFromSelection(words).map((it) => ({
+      [...fromText, ...manual].map((it) => ({
         ...it,
         key: it.ids.join("-"),
         lemma: it.surface.toLowerCase(),
@@ -83,6 +92,17 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
     );
     setStage("words");
   }
+
+  // с включен AI превежда веднага след избора (една заявка за цялата страница)
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (stage === "words" && aiAvailable && !autoRan.current && drafts.length > 0 && drafts.every((d) => !d.translation)) {
+      autoRan.current = true;
+      void autofill();
+    }
+    if (stage === "pick") autoRan.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, drafts.length]);
 
   async function autofill() {
     setBusy(true);
@@ -194,11 +214,11 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
                 <li key={s} className={k < idx ? "text-ink-2" : k === idx ? "font-medium" : "text-ink-3"}>
                   {k < idx ? "✓ " : ""}
                   {stepText[s]}
-                  {s === "read" && step === "read" ? ` ${Math.round(pct * 100)}%` : ""}
+                  {s === "read" && step === "read" ? ` ${Math.round(pct * 100)}% (проход ${passNo} от 3)` : ""}
                 </li>
               ))}
             </ol>
-            <p className="mt-8 max-w-[36ch] text-sm text-ink-2">Първият път отнема по-дълго, защото се зарежда разпознаването. После е по-бързо.</p>
+            <p className="mt-8 max-w-[38ch] text-sm text-ink-2">Четем страницата три пъти по различен начин, за да не изпуснем думи (имена, думи в края на реда). Първият път отнема по-дълго, защото се зарежда разпознаването.</p>
           </div>
         )}
       </div>
@@ -255,6 +275,40 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
                   </p>
                 ))}
               </div>
+
+              <section className="mt-8 border-t border-line pt-5" aria-labelledby="miss">
+                <h2 id="miss" className="text-base font-semibold">Липсва дума?</h2>
+                <p className="mt-1 text-[14px] text-ink-2">Ако думата не е в текста горе, напиши я тук.</p>
+                <div className="mt-3 space-y-2">
+                  <input className="field !min-h-12 !text-[17px]" placeholder="дума на английски" value={xWord} onChange={(e) => setXWord(e.target.value)} autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={60} aria-label="Липсваща дума" />
+                  <input className="field !min-h-12 !text-[16px]" placeholder="изречението (по желание)" value={xSent} onChange={(e) => setXSent(e.target.value)} autoCapitalize="none" spellCheck={false} maxLength={300} aria-label="Изречение за липсващата дума" />
+                  <button
+                    type="button"
+                    className="btn btn-secondary w-full"
+                    disabled={!xWord.trim()}
+                    onMouseDown={keepFocus}
+                    onClick={() => {
+                      setExtras((x) => [...x, { surface: xWord.trim(), sentence: xSent.trim() }]);
+                      setXWord("");
+                      setXSent("");
+                    }}
+                  >
+                    Добави към избраните
+                  </button>
+                </div>
+                {extras.length > 0 && (
+                  <ul className="mt-3 flex flex-wrap gap-2">
+                    {extras.map((x, k) => (
+                      <li key={k} className="flex items-center gap-1 rounded-full bg-surface-2 py-1 pl-3 pr-1 text-[14px]">
+                        {x.surface}
+                        <button type="button" aria-label={`Махни „${x.surface}“`} className="grid h-8 w-8 place-items-center rounded-full text-ink-3" onClick={() => setExtras((e) => e.filter((_, j) => j !== k))}>
+                          <IconClose width={16} height={16} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
             </>
           ) : (
             <div className="relative">

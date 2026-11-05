@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import sharp from "sharp";
 import { createWorker } from "tesseract.js";
-import { wordsFromTesseract, withUnderlines } from "../src/modules/scan/layout";
+import { buildLines, mergePasses, rawFromTesseract, withUnderlines } from "../src/modules/scan/layout";
 
 const dir = process.argv[2] ?? "../bench/data/real-norm";
 const worker = await createWorker("eng");
@@ -22,9 +22,14 @@ for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".jpg")).sort()) {
   const g1 = info.channels === 1 ? gray : new Uint8Array(info.width * info.height).map((_, i) => data[i * info.channels]);
   const jpeg = await sharp(`${dir}/${f}`).resize({ width: 1800 }).jpeg({ quality: 88 }).toBuffer();
   const t0 = Date.now();
-  const { data: ocr } = await worker.recognize(jpeg, {}, { blocks: true });
+  const passes = [];
+  for (const m of ["4", "6", "3"]) {
+    await worker.setParameters({ tessedit_pageseg_mode: m as never });
+    const { data: ocr } = await worker.recognize(jpeg, {}, { blocks: true });
+    passes.push(rawFromTesseract(ocr as never));
+  }
   const ocrMs = Date.now() - t0;
-  const words = withUnderlines(g1, info.width, info.height, wordsFromTesseract(ocr as never));
+  const words = withUnderlines(g1, info.width, info.height, buildLines(mergePasses(passes)));
   const flagged = words.filter((w) => w.auto);
   flaggedTotal += flagged.length;
   const expected = known[f] ?? [];
