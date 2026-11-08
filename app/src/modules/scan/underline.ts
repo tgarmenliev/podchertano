@@ -18,7 +18,7 @@ export type Options = {
   smooth: number;
 };
 
-export const DEFAULTS: Options = { bandStart: 3, bandFrac: 0.4, inkThr: 0.88, darkThr: 0.55, grow: 2, delta: 0.05, smooth: 1 };
+export const DEFAULTS: Options = { bandStart: 3, bandFrac: 0.55, inkThr: 0.88, darkThr: 0.55, grow: 2, delta: 0.1, smooth: 1 };
 
 const median = (a: number[]) => {
   const s = [...a].sort((x, y) => x - y);
@@ -151,14 +151,20 @@ function fitLine(pts: [number, number][]): [number, number] {
   return [a, b];
 }
 
+export type ScoreDetail = { f: number[]; baseA?: number; baseB?: number; score: number; run: number; gap: number | null; gapCols: number; rows: number; chain: number };
+
 /**
- * Връща оценка 0..1 за всяка дума (в същия ред): дял от колоните под думата със следа от молив.
- * gray: яркост 0..255, дължина W*H.
+ * v3: за плътни страници с тъмен молив, залепен до текста (като в помагалото).
+ * 1) основната линия на всеки ред се уточнява от профила на мастилото (не от кутиите на OCR);
+ * 2) лента веднага под основната линия, БЕЗ маскиране на тъмното (моливът е тъмен и докосва буквите);
+ * 3) оценката е дял на колоните със следа и най-дълга непрекъсната серия (опашки на g, y, p покриват малко).
  */
-export function underlineScores(gray: Uint8Array, W: number, H: number, words: Box[], opts: Partial<Options> = {}): number[] {
-  const P = { ...DEFAULTS, ...opts };
+export function underlineDetail(gray: Uint8Array, W: number, H: number, words: Box[], opts: Partial<Options> & { chainFrac?: number; reach?: number; gapTol?: number; refine?: boolean } = {}): ScoreDetail[] {
+  const P = { ...DEFAULTS, bandStart: 2, chainFrac: 0.42, reach: 2, gapTol: 1, ...opts };
   const g = blur(gray, W, H, P.smooth);
   const bg = paperLevel(g, W, H);
+  const norm = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) norm[y * W + x] = g[y * W + x] / bg(x, y);
 
   const lines = new Map<number, Box[]>();
   for (const w of words) {
@@ -177,68 +183,306 @@ export function underlineScores(gray: Uint8Array, W: number, H: number, words: B
     }
   }
   const gSlope = median(slopes);
-  for (const [k, ws] of lines)
-    if (!fits.has(k)) fits.set(k, [gSlope, median(ws.map((w) => w.y + w.h - gSlope * (w.x + w.w / 2)))]);
-
+  for (const [k, ws] of lines) if (!fits.has(k)) fits.set(k, [gSlope, median(ws.map((w) => w.y + w.h - gSlope * (w.x + w.w / 2)))]);
   const mids = [...lines.keys()].map((k) => fits.get(k)![0] * (W / 2) + fits.get(k)![1]).sort((x, y) => x - y);
   const gaps: number[] = [];
   for (let i = 1; i < mids.length; i++) if (mids[i] - mids[i - 1] > 15 * (W / 1800)) gaps.push(mids[i] - mids[i - 1]);
   const pitch = median(gaps) || 45 * (W / 1800);
+  const DARK = 0.62;
 
-  // тъмна маска (печат)
+  /* 1) Основната линия на всеки ред се ПРОСЛЕДЯВА по цялата му дължина.
+        Страниците са извити и под ъгъл. За всеки ред търсим (динамично програмиране) гладка крива, която
+        във всяка колона лежи там, където мастилото на буквите спада най-рязко (долният ръб на текста).
+        Така грешка на отделна дума или подчертаване, залепено за текста, не мести линията. */
   const dark = new Uint8Array(W * H);
-  const norm = new Float32Array(W * H);
-  for (let y = 0; y < H; y++)
+  for (let i = 0; i < dark.length; i++) dark[i] = norm[i] < DARK ? 1 : 0;
+  const integral = new Int32Array((W + 1) * (H + 1));
+  for (let y = 0; y < H; y++) {
+    let rowSum = 0;
     for (let x = 0; x < W; x++) {
-      const i = y * W + x;
-      norm[i] = g[i] / bg(x, y);
-      dark[i] = norm[i] < P.darkThr ? 1 : 0;
+      rowSum += dark[y * W + x];
+      integral[(y + 1) * (W + 1) + (x + 1)] = integral[y * (W + 1) + (x + 1)] + rowSum;
     }
-  const nearDark = (x: number, y: number) => {
-    for (let dy = -P.grow; dy <= P.grow; dy++) {
-      const yy = y + dy;
-      if (yy < 0 || yy >= H) continue;
-      for (let dx = -P.grow; dx <= P.grow; dx++) {
-        const xx = x + dx;
-        if (xx >= 0 && xx < W && dark[yy * W + xx]) return true;
+  }
+  const rect = (x0: number, y0: number, x1: number, y1: number) => {
+    x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(W - 1, x1); y1 = Math.min(H - 1, y1);
+    if (x1 < x0 || y1 < y0) return 0;
+    return integral[(y1 + 1) * (W + 1) + (x1 + 1)] - integral[y0 * (W + 1) + (x1 + 1)] - integral[(y1 + 1) * (W + 1) + x0] + integral[y0 * (W + 1) + x0];
+  };
+  const bottom = (o: Box) => o.y + o.h;
+  const cx = (o: Box) => o.x + o.w / 2;
+  const STEP = 2;
+  const R = 7; // търсене ±7 px около очакваното
+  const baseCurves = new Map<number, { x0: number; ys: Float32Array }>();
+  for (const [k, ws] of lines) {
+    const sorted = [...ws].sort((p, q) => p.x - q.x);
+    const clean = sorted.filter((o) => !/[gjpqy,;()|/]/.test(o.t) && o.h > 6);
+    const pts = (clean.length >= 2 ? clean : sorted).map((o) => [cx(o), bottom(o)] as [number, number]);
+    const x0 = Math.max(0, Math.round(sorted[0].x));
+    const x1 = Math.min(W - 1, Math.round(sorted[sorted.length - 1].x + sorted[sorted.length - 1].w));
+    // очакваната основна линия: МЕДИАНА от дъната на съседните чисти думи (±300 px). Устойчива е на думи,
+    // чиято кутия е стигнала до подчертаването и затова е „слязла“ по-ниско.
+    const prior = (x: number) => {
+      const near = pts.filter((p) => Math.abs(p[0] - x) < 300).map((p) => p[1] + gSlope * (x - p[0]));
+      if (near.length >= 2) return median(near);
+      const nearest = [...pts].sort((p, q) => Math.abs(p[0] - x) - Math.abs(q[0] - x))[0];
+      return nearest[1] + gSlope * (x - nearest[0]);
+    };
+    const n = Math.floor((x1 - x0) / STEP) + 1;
+    const S = R * 2 + 1;
+    const score = new Float32Array(n * S);
+    for (let i = 0; i < n; i++) {
+      const x = x0 + i * STEP;
+      const c = prior(x);
+      for (let d = -R; d <= R; d++) {
+        const y = Math.round(c + d);
+        const above = rect(x - 10, y - 5, x + 10, y);
+        const below = rect(x - 10, y + 1, x + 10, y + 5);
+        score[i * S + d + R] = above - below - 0.25 * d; // лек превес за по-горния спад: долният ръб на подчертаването не е основна линия
       }
     }
-    return false;
+    // Витерби: най-добър гладък път (±1 px на стъпка, малка глоба за промяна)
+    const dp = new Float32Array(n * S);
+    const from = new Int8Array(n * S);
+    for (let d = 0; d < S; d++) dp[d] = score[d];
+    for (let i = 1; i < n; i++)
+      for (let d = 0; d < S; d++) {
+        let best = -1e9;
+        let arg = 0;
+        for (let q = -1; q <= 1; q++) {
+          const pd = d + q;
+          if (pd < 0 || pd >= S) continue;
+          const v = dp[(i - 1) * S + pd] - (q ? 6 : 0);
+          if (v > best) { best = v; arg = q; }
+        }
+        dp[i * S + d] = best + score[i * S + d];
+        from[i * S + d] = arg;
+      }
+    let d = 0;
+    let bv = -1e9;
+    for (let q = 0; q < S; q++) if (dp[(n - 1) * S + q] > bv) { bv = dp[(n - 1) * S + q]; d = q; }
+    const ys = new Float32Array(n);
+    for (let i = n - 1; i >= 0; i--) {
+      ys[i] = prior(x0 + i * STEP) + (d - R) + 0.5;
+      d += from[i * S + d];
+    }
+    baseCurves.set(k, { x0, ys });
+  }
+  const baseAt = (line: number, x: number) => {
+    const c = baseCurves.get(line);
+    if (!c) return null;
+    const f = (x - c.x0) / STEP;
+    const i = Math.min(c.ys.length - 1, Math.max(0, Math.floor(f)));
+    const j = Math.min(c.ys.length - 1, i + 1);
+    const t = Math.min(1, Math.max(0, f - i));
+    return c.ys[i] * (1 - t) + c.ys[j] * t;
   };
+  const localBase = new Map<Box, [number, number]>();
+  for (const w of words) {
+    // локална права през кривата около думата (за стария код, който очаква y = a·x + b)
+    const xa = w.x, xb = w.x + w.w;
+    const y1 = baseAt(w.line, xa) ?? bottom(w) - gSlope * 0;
+    const y2 = baseAt(w.line, xb) ?? y1;
+    const a = (y2 - y1) / Math.max(1, xb - xa);
+    localBase.set(w, [a, y1 - a * xa]);
+  }
 
   return words.map((w) => {
-    const [a, b] = fits.get(w.line)!;
+    const [a, b] = localBase.get(w)!;
+    const off = 0;
     const xa = Math.round(w.x) + 2;
     const xb = Math.round(w.x + w.w) - 2;
     const vals: number[] = [];
-    const grid: (number[] | null)[] = [];
+    const grid: number[][] = [];
+    const wide: number[][] = []; // разширена лента (с номера на реда), за проследяване на вълнообразна линия
+    const dyEnd = Math.max(P.bandStart + 4, P.bandFrac * pitch * 0.75);
+    const dyWideEnd = Math.max(P.bandStart + 8, P.chainFrac * pitch);
     for (let x = xa; x <= xb; x++) {
-      if (x < 0 || x >= W) {
-        grid.push(null);
-        continue;
-      }
-      const base = a * x + b;
       const col: number[] = [];
-      for (let dy = P.bandStart; dy <= P.bandFrac * pitch; dy++) {
-        const y = Math.round(base + dy);
-        if (y < 0 || y >= H) continue;
-        if (nearDark(x, y)) continue;
-        const n = norm[y * W + x];
-        col.push(n);
-        vals.push(n);
+      const wcol: number[] = new Array(dyWideEnd - P.bandStart + 1 | 0).fill(1);
+      if (x >= 0 && x < W) {
+        const base = a * x + b + off;
+        for (let dy = P.bandStart; dy <= dyWideEnd; dy++) {
+          const y = Math.round(base + dy);
+          if (y < 0 || y >= H) continue;
+          const n = norm[y * W + x];
+          wcol[dy - P.bandStart] = n;
+          if (dy <= dyEnd) {
+            col.push(n);
+            vals.push(n);
+          }
+        }
       }
       grid.push(col);
+      wide.push(wcol);
     }
     vals.sort((p, q) => p - q);
-    const L = vals.length ? vals[Math.floor(vals.length * 0.75)] : 1;
+    const L = vals.length ? vals[Math.floor(vals.length * 0.8)] : 1;
     const thr = Math.min(P.inkThr, L - P.delta);
-    let cols = 0;
-    let tot = 0;
-    for (const col of grid) {
-      if (col === null) continue;
-      tot++;
-      if (col.some((n) => n < thr)) cols++;
+    // колони-„междини“: над основната линия няма печат (между буквите/думите); ако и под нея има следа, това е молив
+    const gapCol: boolean[] = [];
+    for (let x = xa; x <= xb; x++) {
+      let letter = false;
+      if (x >= 0 && x < W) {
+        const base = a * x + b + off;
+        for (let dy = -6; dy <= -1; dy++) {
+          const y = Math.round(base + dy);
+          if (y >= 0 && y < H && norm[y * W + x] < 0.7) {
+            letter = true;
+            break;
+          }
+        }
+      }
+      gapCol.push(!letter);
     }
-    return tot ? cols / tot : 0;
+    let cols = 0;
+    let run = 0;
+    let best = 0;
+    let gapN = 0;
+    let gapInk = 0;
+    grid.forEach((col, k) => {
+      const ink = col.some((n) => n < thr);
+      if (gapCol[k]) {
+        gapN++;
+        if (ink) gapInk++;
+      }
+      if (ink) {
+        cols++;
+        run++;
+        if (run > best) best = run;
+      } else run = 0;
+    });
+    // верига: най-дългата свързана следа (преход до ±reach реда между съседни колони, дупки до gapTol колони)
+    let chain = 0;
+    let prev = new Int32Array(wide[0]?.length ?? 0);
+    const gapAge = new Int32Array(prev.length);
+    for (let k = 0; k < wide.length; k++) {
+      const cur = new Int32Array(prev.length);
+      for (let r = 0; r < cur.length; r++) {
+        if (wide[k][r] >= thr) continue;
+        let best2 = 0;
+        for (let q = Math.max(0, r - P.reach); q <= Math.min(cur.length - 1, r + P.reach); q++) if (prev[q] > best2) best2 = prev[q];
+        cur[r] = best2 + 1;
+        if (cur[r] > chain) chain = cur[r];
+      }
+      // допускаме малка дупка (текстура на хартията): пренасяме предишните стойности, ако тази колона е празна
+      let anyInk = false;
+      for (let r = 0; r < cur.length; r++) if (cur[r]) { anyInk = true; break; }
+      if (!anyInk && k > 0) {
+        for (let r = 0; r < cur.length; r++) gapAge[r] = prev[r] > 0 ? gapAge[r] + 1 : 0;
+        for (let r = 0; r < cur.length; r++) cur[r] = gapAge[r] <= P.gapTol && prev[r] > 0 ? prev[r] : 0;
+      } else gapAge.fill(0);
+      prev = cur;
+    }
+    const tot = grid.length || 1;
+    return { f: [], baseA: a, baseB: b + off, score: cols / tot, run: best / tot, gap: gapN >= 3 ? gapInk / gapN : null, gapCols: gapN, rows: 0, chain: Math.min(1, chain / tot) };
   });
+}
+
+export function underlineScores(gray: Uint8Array, W: number, H: number, words: Box[], opts: Partial<Options> = {}): number[] {
+  return underlineDetail(gray, W, H, words, opts).map((d) => d.score);
+}
+
+
+/** Брой признаци (вж. featuresFor). */
+export const FEATURE_NAMES = ["cov0-2", "cov2-4", "cov4-6", "cov6-9", "cov9-12", "cov12-16", "chain3-16", "run3-16", "dark<0.35", "dark<0.5", "thick", "letters", "descenders", "contact-clear", "paper"];
+
+/**
+ * Признаци за дума за обучен класификатор: покритие по ленти на различна дълбочина под основната линия,
+ * непрекъсната следа, колко тъмен е „мастилото“ (печатът е по-черен от графита), дебелина на следата.
+ * Печатът залепя за основната линия (горните ленти), подчертаването е 4–16 px под нея.
+ */
+export function featuresFor(norm: Float32Array, W: number, H: number, w: Box, a: number, b: number, pitch: number): number[] {
+  const sc = pitch / 38.5; // мащаб спрямо типичната страница
+  const xa = Math.round(w.x) + 2;
+  const xb = Math.round(w.x + w.w) - 2;
+  const nCols = Math.max(1, xb - xa + 1);
+  const bands = [[0, 2], [2, 4], [4, 6], [6, 9], [9, 12], [12, 16]].map(([p, q]) => [Math.round(p * sc), Math.max(Math.round(q * sc), Math.round(p * sc) + 1)]);
+  // ниво на хартията в зоната под думата: 85-и персентил
+  const samples: number[] = [];
+  for (let x = xa; x <= xb; x += 2) {
+    const base = a * x + b;
+    for (let dy = 3; dy <= Math.round(16 * sc); dy += 2) {
+      const y = Math.round(base + dy);
+      if (x >= 0 && x < W && y >= 0 && y < H) samples.push(norm[y * W + x]);
+    }
+  }
+  samples.sort((p, q) => p - q);
+  const paper = samples.length ? samples[Math.floor(samples.length * 0.85)] : 1;
+  const thr = Math.min(0.88, paper - 0.1);
+  const cov = bands.map(([p, q]) => {
+    let c = 0;
+    for (let x = xa; x <= xb; x++) {
+      if (x < 0 || x >= W) continue;
+      const base = a * x + b;
+      let ink = false;
+      for (let dy = p; dy <= q && !ink; dy++) {
+        const y = Math.round(base + dy);
+        if (y >= 0 && y < H && norm[y * W + x] < thr) ink = true;
+      }
+      if (ink) c++;
+    }
+    return c / nCols;
+  });
+  // верига и серия в зоната [3,16]
+  let run = 0;
+  let bestRun = 0;
+  let dark35 = 0;
+  let dark50 = 0;
+  let inkPix = 0;
+  let thickSum = 0;
+  let thickN = 0;
+  const reach = 2;
+  const yMax = Math.round(16 * sc);
+  const rowsInk: boolean[][] = [];
+  for (let x = xa; x <= xb; x++) {
+    const col: boolean[] = [];
+    let any = false;
+    let streak = 0;
+    let maxStreak = 0;
+    for (let dy = 3; dy <= yMax; dy++) {
+      const y = Math.round(a * x + b + dy);
+      const v = x >= 0 && x < W && y >= 0 && y < H ? norm[y * W + x] : 1;
+      const ink = v < thr;
+      col.push(ink);
+      if (ink) {
+        any = true;
+        inkPix++;
+        if (v < 0.35) dark35++;
+        if (v < 0.5) dark50++;
+        streak++;
+        if (streak > maxStreak) maxStreak = streak;
+      } else streak = 0;
+    }
+    rowsInk.push(col);
+    if (any) {
+      run++;
+      if (run > bestRun) bestRun = run;
+      thickSum += maxStreak;
+      thickN++;
+    } else run = 0;
+  }
+  let chain = 0;
+  let prev = new Int32Array(yMax - 2);
+  for (const col of rowsInk) {
+    const cur = new Int32Array(prev.length);
+    for (let r = 0; r < cur.length; r++) {
+      if (!col[r]) continue;
+      let m = 0;
+      for (let q = Math.max(0, r - reach); q <= Math.min(cur.length - 1, r + reach); q++) if (prev[q] > m) m = prev[q];
+      cur[r] = m + 1;
+      if (cur[r] > chain) chain = cur[r];
+    }
+    prev = cur;
+  }
+  const letters = w.t.replace(/[^A-Za-z]/g, "").length;
+  const desc = letters ? (w.t.match(/[gjpqy]/g)?.length ?? 0) / letters : 0;
+  const clear = (cov[3] + cov[4]) / 2;
+  return [
+    cov[0], cov[1], cov[2], cov[3], cov[4], cov[5],
+    Math.min(1, chain / nCols), bestRun / nCols,
+    inkPix ? dark35 / inkPix : 0, inkPix ? dark50 / inkPix : 0,
+    thickN ? Math.min(1, thickSum / thickN / 8) : 0,
+    Math.min(1, letters / 12), desc, cov[0] - clear, paper,
+  ];
 }
