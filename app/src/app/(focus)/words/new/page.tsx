@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { aiEnabled } from "@/core/ai/config";
 import { requireActive } from "@/core/auth/session";
 import { IconBack } from "@/design/icons";
 import { NewWordForm } from "./form";
@@ -16,7 +17,7 @@ export default async function NewWord() {
         <h1 className="text-[17px] font-semibold">Нова дума</h1>
       </header>
       <main className="px-5 pb-16 pt-6">
-        <NewWordForm />
+        <NewWordForm aiAvailable={aiEnabled()} />
       </main>
     </div>
   );
