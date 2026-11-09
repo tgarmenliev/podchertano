@@ -20,6 +20,7 @@ const stepText: Record<Step, string> = {
   load: "Зареждам разпознаването",
   read: "Чета текста",
   underline: "Търся подчертаното",
+  recover: "Проверявам подчертаните думи",
 };
 const BATCH = 5;
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -184,7 +185,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
 
   /* ───── Начало ───── */
   if (stage === "start" || stage === "working") {
-    const idx = (["prepare", "load", "read", "underline"] as Step[]).indexOf(step);
+    const idx = (["prepare", "load", "read", "underline", "recover"] as Step[]).indexOf(step);
     return (
       <div className="mx-auto flex min-h-dvh max-w-xl flex-col px-5" style={{ paddingTop: "calc(var(--safe-top) + 8px)", paddingBottom: "max(var(--safe-bottom), 20px)" }}>
         <header className="flex h-11 items-center">
@@ -226,10 +227,10 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
             <h1 className="text-[26px] font-semibold leading-tight tracking-tight">{stepText[step]}…</h1>
             <div className="relative mt-6 h-[6px]">
               <div className="absolute inset-0 top-[2px] h-[2px] rounded bg-line" />
-              <div className="wave-line wave-progress absolute inset-0" style={{ clipPath: `inset(0 ${100 - Math.round(((idx + (step === "read" ? pct : 0)) / 4) * 100)}% 0 0)` }} />
+              <div className="wave-line wave-progress absolute inset-0" style={{ clipPath: `inset(0 ${100 - Math.round(((idx + (step === "read" ? pct : 0)) / 5) * 100)}% 0 0)` }} />
             </div>
             <ol className="mt-8 space-y-2 text-[15px]">
-              {(["prepare", "load", "read", "underline"] as Step[]).map((s, k) => (
+              {(["prepare", "load", "read", "underline", "recover"] as Step[]).map((s, k) => (
                 <li key={s} className={k < idx ? "text-ink-2" : k === idx ? "font-medium" : "text-ink-3"}>
                   {k < idx ? "✓ " : ""}
                   {stepText[s]}
@@ -435,6 +436,10 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
               <details className="mt-3">
                 <summary className="cursor-pointer text-sm text-ink-2">Още полета</summary>
                 <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="mb-1 block text-sm text-ink-2" htmlFor={`s-${d.key}`}>Дума, както е в текста (поправи, ако е прочетена грешно)</label>
+                    <input id={`s-${d.key}`} className={f} value={d.surface} onChange={(e) => update(d.key, { surface: e.target.value, lemma: d.lemma === d.surface.toLowerCase() ? e.target.value.toLowerCase() : d.lemma })} autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={80} />
+                  </div>
                   <div>
                     <label className="mb-1 block text-sm text-ink-2" htmlFor={`l-${d.key}`}>Основна форма</label>
                     <input id={`l-${d.key}`} className={f} value={d.lemma} onChange={(e) => update(d.key, { lemma: e.target.value })} autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={60} />

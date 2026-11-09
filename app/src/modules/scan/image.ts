@@ -17,13 +17,31 @@ export async function loadForScan(file: File) {
   const scale = Math.min(1, WORK_LONG_SIDE / Math.max(bmp.width, bmp.height));
   const width = Math.round(bmp.width * scale);
   const height = Math.round(bmp.height * scale);
+  // Смаляване на стъпки (по ½), за да няма назъбване: тънкият молив и дребният шрифт се губят при рязко смаляване.
+  let src: CanvasImageSource = bmp;
+  let sw = bmp.width;
+  let sh = bmp.height;
+  while (sw / 2 >= width && sh / 2 >= height) {
+    const step = document.createElement("canvas");
+    step.width = Math.max(width, Math.round(sw / 2));
+    step.height = Math.max(height, Math.round(sh / 2));
+    const sctx = step.getContext("2d")!;
+    sctx.imageSmoothingEnabled = true;
+    sctx.imageSmoothingQuality = "high";
+    sctx.drawImage(src, 0, 0, step.width, step.height);
+    src = step;
+    sw = step.width;
+    sh = step.height;
+  }
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, width, height);
-  ctx.drawImage(bmp, 0, 0, width, height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, 0, 0, width, height);
   bmp.close();
   const rgba = ctx.getImageData(0, 0, width, height).data;
   return { canvas, width, height, rgba };

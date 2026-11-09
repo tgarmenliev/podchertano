@@ -1,5 +1,5 @@
 import type { ScanWord } from "./types";
-import { underlineDetail } from "./underline";
+import { underlineDetail, type TraceContext } from "./underline";
 
 type TWord = { text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } };
 type TData = { blocks?: { paragraphs: { lines: { words: TWord[] }[] }[] }[] | null };
@@ -227,10 +227,13 @@ export function withUnderlines(
   W: number,
   H: number,
   words: Omit<ScanWord, "score" | "auto" | "sel">[],
+  hook?: (ctx: TraceContext) => void,
 ): ScanWord[] {
-  const det = underlineDetail(gray, W, H, words.map((w) => ({ t: w.t, x: w.x, y: w.y, w: w.w, h: w.h, line: w.line })));
+  const det = underlineDetail(gray, W, H, words.map((w) => ({ t: w.t, x: w.x, y: w.y, w: w.w, h: w.h, line: w.line })), { hook });
   return words.map((w, k) => {
-    const real = w.t.replace(/[^A-Za-z]/g, "").length >= 3 && w.conf >= 55; // шумът (1–2 знака) не се маркира сам
+    const long = w.t.replace(/[^A-Za-z]/g, "").length >= 3;
+    // шумът (1–2 знака, слаба увереност) не се маркира сам; но при много ясна следа от молив допускаме и по-слабо прочетена дума
+    const real = long && (w.conf >= 55 || (w.conf >= 35 && det[k].score >= 0.9 && det[k].run >= 0.9));
     const auto = real && det[k].score >= AUTO_THRESHOLD && det[k].run >= AUTO_RUN;
     return { ...w, score: Math.round(det[k].score * 100) / 100, auto, sel: auto };
   });

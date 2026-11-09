@@ -151,6 +151,8 @@ function fitLine(pts: [number, number][]): [number, number] {
   return [a, b];
 }
 
+export type TraceContext = { norm: Float32Array; W: number; H: number; baseAt: (line: number, x: number) => number | null; lines: Map<number, Box[]>; pitch: number };
+
 export type ScoreDetail = { f: number[]; baseA?: number; baseB?: number; score: number; run: number; gap: number | null; gapCols: number; rows: number; chain: number };
 
 /**
@@ -159,7 +161,7 @@ export type ScoreDetail = { f: number[]; baseA?: number; baseB?: number; score: 
  * 2) лента веднага под основната линия, БЕЗ маскиране на тъмното (моливът е тъмен и докосва буквите);
  * 3) оценката е дял на колоните със следа и най-дълга непрекъсната серия (опашки на g, y, p покриват малко).
  */
-export function underlineDetail(gray: Uint8Array, W: number, H: number, words: Box[], opts: Partial<Options> & { chainFrac?: number; reach?: number; gapTol?: number; refine?: boolean } = {}): ScoreDetail[] {
+export function underlineDetail(gray: Uint8Array, W: number, H: number, words: Box[], opts: Partial<Options> & { chainFrac?: number; reach?: number; gapTol?: number; refine?: boolean; hook?: (ctx: TraceContext) => void } = {}): ScoreDetail[] {
   const P = { ...DEFAULTS, bandStart: 2, chainFrac: 0.42, reach: 2, gapTol: 1, ...opts };
   const g = blur(gray, W, H, P.smooth);
   const bg = paperLevel(g, W, H);
@@ -277,6 +279,7 @@ export function underlineDetail(gray: Uint8Array, W: number, H: number, words: B
     const t = Math.min(1, Math.max(0, f - i));
     return c.ys[i] * (1 - t) + c.ys[j] * t;
   };
+  opts.hook?.({ norm, W, H, baseAt, lines, pitch });
   const localBase = new Map<Box, [number, number]>();
   for (const w of words) {
     // локална права през кривата около думата (за стария код, който очаква y = a·x + b)
@@ -485,4 +488,69 @@ export function featuresFor(norm: Float32Array, W: number, H: number, w: Box, a:
     thickN ? Math.min(1, thickSum / thickN / 8) : 0,
     Math.min(1, letters / 12), desc, cov[0] - clear, paper,
   ];
+}
+
+
+export type Segment = { line: number; x0: number; x1: number; /** дял колони с ТЪМНА следа (графит е по-тъмен от сянка/призрачен текст) */ dark: number };
+
+/**
+ * Участъци от молив по редовете, независимо от OCR думите: непрекъсната следа под основната линия,
+ * поне minLen px дълга. Служи да се намери подчертана дума, която OCR е пропуснал или е прочел непълно.
+ */
+export function underlineSegments(ctx: TraceContext, minLen = 36): Segment[] {
+  const { norm, W, H, baseAt, lines, pitch } = ctx;
+  const sc = pitch / 38.5;
+  const dy0 = Math.max(3, Math.round(3 * sc));
+  const dy1 = Math.round(16 * sc);
+  const out: Segment[] = [];
+  for (const [line, ws] of lines) {
+    const x0 = Math.max(0, Math.round(Math.min(...ws.map((w) => w.x))) - 40);
+    const x1 = Math.min(W - 1, Math.round(Math.max(...ws.map((w) => w.x + w.w))) + 40);
+    // ниво на хартията за реда: 85-и персентил на лентата
+    const samples: number[] = [];
+    for (let x = x0; x <= x1; x += 3) {
+      const b = baseAt(line, Math.min(x1, Math.max(x0, x))) ?? baseAt(line, x0);
+      if (b === null) continue;
+      for (let dy = dy0; dy <= dy1; dy += 2) {
+        const y = Math.round(b + dy);
+        if (y >= 0 && y < H) samples.push(norm[y * W + x]);
+      }
+    }
+    if (!samples.length) continue;
+    samples.sort((p, q) => p - q);
+    const thr = Math.min(0.85, samples[Math.floor(samples.length * 0.85)] - 0.15);
+    let start = -1;
+    let gap = 0;
+    let last = -1;
+    let darkCols = 0;
+    for (let x = x0; x <= x1 + 6; x++) {
+      let ink = false;
+      let strong = false;
+      if (x <= x1) {
+        const b = baseAt(line, Math.min(x1, Math.max(x0, x)));
+        if (b !== null)
+          for (let dy = dy0; dy <= dy1; dy++) {
+            const y = Math.round(b + dy);
+            if (y < 0 || y >= H) continue;
+            const v = norm[y * W + x];
+            if (v < thr) ink = true;
+            if (v < 0.6) strong = true;
+          }
+      }
+      if (ink) {
+        if (start < 0) {
+          start = x;
+          darkCols = 0;
+        }
+        if (strong) darkCols++;
+        last = x;
+        gap = 0;
+      } else if (start >= 0 && ++gap > 5) {
+        if (last - start >= minLen) out.push({ line, x0: start, x1: last, dark: darkCols / (last - start + 1) });
+        start = -1;
+        gap = 0;
+      }
+    }
+  }
+  return out;
 }
