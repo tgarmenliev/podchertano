@@ -84,9 +84,7 @@ const aiWordSchema = z.object({
 
 export type SaveWordOut = { ok: true; id: string; created: boolean } | { ok: false; error: string };
 
-/** Записва дума, попълнена от AI (и редактирана от ученика). Не пренасочва: може да се добавя дума след дума. */
-export async function saveWordAction(raw: unknown): Promise<SaveWordOut> {
-  const { user } = await requireActive();
+async function saveOne(userId: string, raw: unknown): Promise<SaveWordOut> {
   const parsed = aiWordSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Провери данните." };
   const d = parsed.data;
@@ -98,7 +96,7 @@ export async function saveWordAction(raw: unknown): Promise<SaveWordOut> {
   const sentence = mine ?? (ex && ex.toLowerCase().includes(target) ? ex : null);
   const surface = mine ? d.surface?.trim() || target : sentence ? target : null;
   if (mine && surface && !mine.toLowerCase().includes(surface.toLowerCase())) return { ok: false, error: "Думата трябва да се среща в изречението." };
-  const r = await addWord(user.id, {
+  const r = await addWord(userId, {
     lemma: d.lemma,
     phrase: d.phrase || null,
     phraseKind: pos === "phrasal verb" ? "phrasal_verb" : pos === "idiom" ? "idiom" : d.phrase ? "collocation" : null,
@@ -110,7 +108,41 @@ export async function saveWordAction(raw: unknown): Promise<SaveWordOut> {
     sentence,
     surfaceForm: surface,
   });
+  return { ok: true, id: r.id, created: r.created };
+}
+
+/** Записва дума, попълнена от AI (и редактирана от ученика). Не пренасочва: може да се добавя дума след дума. */
+export async function saveWordAction(raw: unknown): Promise<SaveWordOut> {
+  const { user } = await requireActive();
+  const r = await saveOne(user.id, raw);
+  if (r.ok) {
+    revalidatePath("/words");
+    revalidatePath("/");
+  }
+  return r;
+}
+
+export type SaveWordsOut = { ok: true; added: number; already: number; failed: number } | { ok: false; error: string };
+
+/** Записва няколко думи наведнъж (до 30). Грешна дума не спира останалите. */
+export async function saveWordsAction(raw: unknown): Promise<SaveWordsOut> {
+  const { user } = await requireActive();
+  const list = z.array(z.unknown()).min(1).max(30).safeParse(raw);
+  if (!list.success) return { ok: false, error: "Невалидни данни." };
+  let added = 0;
+  let already = 0;
+  let failed = 0;
+  for (const item of list.data) {
+    try {
+      const r = await saveOne(user.id, item);
+      if (!r.ok) failed++;
+      else if (r.created) added++;
+      else already++;
+    } catch {
+      failed++;
+    }
+  }
   revalidatePath("/words");
   revalidatePath("/");
-  return { ok: true, id: r.id, created: r.created };
+  return { ok: true, added, already, failed };
 }

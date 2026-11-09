@@ -8,6 +8,7 @@ import { enrichAction } from "../../scan/actions";
 import { SpeakButton } from "@/design/speak";
 import { keepFocus } from "@/design/keep-focus";
 import type { Enriched } from "@/core/ai/enrich";
+import { BatchForm } from "./batch";
 
 type Phase = "input" | "loading" | "result" | "saving";
 
@@ -72,6 +73,7 @@ export function NewWordForm({ aiAvailable }: { aiAvailable: boolean }) {
   const [translation, setTranslation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [manual, setManual] = useState(!aiAvailable);
+  const [many, setMany] = useState(false);
   const [added, setAdded] = useState<{ word: string; id: string; again: boolean } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const l = "mb-2 block text-sm text-ink-2";
@@ -138,8 +140,36 @@ export function NewWordForm({ aiAvailable }: { aiAvailable: boolean }) {
 
   const busy = phase === "loading" || phase === "saving";
 
+  const modeTabs = (
+    <div role="tablist" aria-label="Колко думи" className="mb-6 grid grid-cols-2 gap-1 rounded-[var(--radius-m)] bg-surface p-1 text-[14px] font-medium">
+      {([false, true] as const).map((m) => (
+        <button
+          key={String(m)}
+          type="button"
+          role="tab"
+          aria-selected={many === m}
+          onClick={() => setMany(m)}
+          className="min-h-10 rounded-[9px]"
+          style={many === m ? { background: "var(--bg)", boxShadow: "0 0 0 1px var(--line-strong)" } : { color: "var(--ink-2)" }}
+        >
+          {m ? "Няколко думи" : "Една дума"}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (many) {
+    return (
+      <div>
+        {modeTabs}
+        <BatchForm />
+      </div>
+    );
+  }
+
   return (
     <div>
+      {phase === "input" && modeTabs}
       {added && (
         <p role="status" className="enter mb-5 rounded-[var(--radius-m)] px-4 py-3 text-[15px]" style={{ background: "var(--ok-tint)", color: "var(--ok)" }}>
           {added.again ? "Вече беше в речника: " : "Добавена: "}
