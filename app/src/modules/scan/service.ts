@@ -6,6 +6,7 @@ import type { ScanWord } from "./types";
 
 export type SaveScanInput = {
   title?: string | null;
+  pipeline?: string;
   image: Buffer;
   mime: string;
   width: number;
@@ -41,7 +42,7 @@ export async function saveScan(userId: string, input: SaveScanInput, now = new D
         words: input.words.map((w) => ({ i: w.i, t: w.t, x: w.x, y: w.y, w: w.w, h: w.h, line: w.line, para: w.para, score: w.score, auto: w.auto, sel: w.sel })),
         imageW: input.width,
         imageH: input.height,
-        pipelineVersion: "browser-tesseract.v1",
+        pipelineVersion: input.pipeline ?? "browser-tesseract.v1",
       })
       .returning({ id: sources.id });
     await tx.insert(sourceImages).values({ sourceId: src.id, userId, mime: input.mime, bytes: input.image.length, data: input.image });

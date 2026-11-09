@@ -10,7 +10,8 @@ import { ImageError } from "@/modules/scan/image";
 import { scanPage, type Step } from "@/modules/scan/ocr";
 import { itemsFromSelection, paragraphs, type Item } from "@/modules/scan/sentences";
 import type { ScanResult, ScanWord } from "@/modules/scan/types";
-import { enrichAction, saveScanAction } from "./actions";
+import { mergeAi } from "@/modules/scan/aimerge";
+import { aiReadPageAction, enrichAction, saveScanAction } from "./actions";
 
 type Stage = "start" | "working" | "pick" | "words" | "saving";
 type Draft = Item & { key: string; lemma: string; translation: string; alt: string; meaning: string; example: string; pos: string; phrase: string | null };
@@ -21,6 +22,7 @@ const stepText: Record<Step, string> = {
   read: "Чета текста",
   underline: "Търся подчертаното",
   recover: "Проверявам подчертаните думи",
+  ai: "AI чете страницата",
 };
 const BATCH = 5;
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -38,6 +40,8 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
   const [tab, setTab] = useState<"text" | "photo">("text");
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [busy, setBusy] = useState(false);
+  const [readNote, setReadNote] = useState<string | null>(null);
+  const [usedAi, setUsedAi] = useState(false);
   const [aiMsg, setAiMsg] = useState<string | null>(null);
   const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
   const [extras, setExtras] = useState<{ surface: string; sentence: string }[]>([]);
@@ -61,11 +65,35 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
           setPassNo(k ?? 1);
         }
       });
-      if (r.words.length < 5) throw new ImageError("Почти не намерих текст. Снимай по-отблизо и на по-добра светлина.");
+      let finalWords = r.words;
+      let ai = false;
+      let note: string | null = null;
+      if (aiAvailable) {
+        // AI чете верния текст и подчертаното; при грешка остава четенето от телефона
+        setStep("ai");
+        try {
+          const fd = new FormData();
+          fd.set("image", new File([r.aiImage], "page.jpg", { type: "image/jpeg" }));
+          const out = await aiReadPageAction(fd);
+          if (out.ok) {
+            const merged = mergeAi(r.words, out.lines, r.width, r.height);
+            if (merged.length >= 5) {
+              finalWords = merged;
+              ai = true;
+            }
+          } else note = out.error;
+        } catch {
+          note = "Четенето с AI не успя.";
+        }
+        if (!ai && !note) note = "Четенето с AI не успя.";
+      }
+      if (finalWords.length < 5) throw new ImageError("Почти не намерих текст. Снимай по-отблизо и на по-добра светлина.");
       photoUrl.current = URL.createObjectURL(r.image);
+      setReadNote(note);
+      setUsedAi(ai);
       setResult(r);
-      setWords(r.words);
-      setAuto(r.words.filter((w) => w.auto).length);
+      setWords(finalWords);
+      setAuto(finalWords.filter((w) => w.auto).length);
       setStage("pick");
     } catch (e) {
       setError(e instanceof ImageError ? e.message : "Не успях да разчета страницата. Опитай пак на по-добра светлина.");
@@ -155,6 +183,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
       JSON.stringify({
         width: result.width,
         height: result.height,
+        pipeline: usedAi ? "ai-read.v1" : "browser-tesseract.v1",
         words: wordsOut,
         items: only.map((d) => ({
           lemma: d.lemma.trim().toLowerCase(),
@@ -185,7 +214,8 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
 
   /* ───── Начало ───── */
   if (stage === "start" || stage === "working") {
-    const idx = (["prepare", "load", "read", "underline", "recover"] as Step[]).indexOf(step);
+    const steps: Step[] = aiAvailable ? ["prepare", "load", "read", "underline", "recover", "ai"] : ["prepare", "load", "read", "underline", "recover"];
+    const idx = steps.indexOf(step);
     return (
       <div className="mx-auto flex min-h-dvh max-w-xl flex-col px-5" style={{ paddingTop: "calc(var(--safe-top) + 8px)", paddingBottom: "max(var(--safe-bottom), 20px)" }}>
         <header className="flex h-11 items-center">
@@ -219,7 +249,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
                 Избери от галерията
                 <input type="file" accept="image/*" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} />
               </label>
-              <p className="pt-2 text-center text-sm text-ink-2">Снимката се обработва на телефона. Запазва се само за теб.</p>
+              <p className="pt-2 text-center text-sm text-ink-2">{aiAvailable ? "Снимката се изпраща за четене към AI услуга (OpenAI). Запазва се само за теб." : "Снимката се обработва на телефона. Запазва се само за теб."}</p>
             </div>
           </>
         ) : (
@@ -227,10 +257,10 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
             <h1 className="text-[26px] font-semibold leading-tight tracking-tight">{stepText[step]}…</h1>
             <div className="relative mt-6 h-[6px]">
               <div className="absolute inset-0 top-[2px] h-[2px] rounded bg-line" />
-              <div className="wave-line wave-progress absolute inset-0" style={{ clipPath: `inset(0 ${100 - Math.round(((idx + (step === "read" ? pct : 0)) / 5) * 100)}% 0 0)` }} />
+              <div className="wave-line wave-progress absolute inset-0" style={{ clipPath: `inset(0 ${100 - Math.round(((idx + (step === "read" ? pct : 0)) / steps.length) * 100)}% 0 0)` }} />
             </div>
             <ol className="mt-8 space-y-2 text-[15px]">
-              {(["prepare", "load", "read", "underline", "recover"] as Step[]).map((s, k) => (
+              {steps.map((s, k) => (
                 <li key={s} className={k < idx ? "text-ink-2" : k === idx ? "font-medium" : "text-ink-3"}>
                   {k < idx ? "✓ " : ""}
                   {stepText[s]}
@@ -238,7 +268,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
                 </li>
               ))}
             </ol>
-            <p className="mt-8 max-w-[38ch] text-sm text-ink-2">Четем страницата три пъти по различен начин, за да не изпуснем думи (имена, думи в края на реда). Първият път отнема по-дълго, защото се зарежда разпознаването.</p>
+            <p className="mt-8 max-w-[38ch] text-sm text-ink-2">{aiAvailable ? "Четем страницата в телефона (за местата на думите), а AI я чете за верния текст и подчертаното. Първият път отнема по-дълго." : "Четем страницата три пъти по различен начин, за да не изпуснем думи (имена, думи в края на реда). Първият път отнема по-дълго, защото се зарежда разпознаването."}</p>
           </div>
         )}
       </div>
@@ -276,7 +306,7 @@ export function ScanFlow({ aiAvailable }: { aiAvailable: boolean }) {
           {tab === "text" ? (
             <>
               <p className="mb-6 rounded-[var(--radius-m)] bg-surface px-4 py-3 text-[14px] leading-snug text-ink-2">
-                {auto > 0 ? `Отбелязахме ${auto} думи, които изглеждат подчертани. Провери ги и докосни всяка друга, която искаш да добавиш.` : "Не открихме подчертани думи. Докосни думите, които искаш да добавиш."}
+                {auto > 0 ? `${usedAi ? "AI отбеляза" : "Отбелязахме"} ${auto} ${usedAi ? "подчертани думи" : "думи, които изглеждат подчертани"}. Провери ги и докосни всяка друга, която искаш да добавиш.` : "Не открихме подчертани думи. Докосни думите, които искаш да добавиш."}{readNote ? ` (${readNote} Показах четенето от телефона.)` : ""}
               </p>
               <div className="read text-[20px] text-ink" style={{ lineHeight: 2.25 }}>
                 {paras.map((p) => (

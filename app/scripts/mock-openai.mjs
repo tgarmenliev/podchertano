@@ -7,7 +7,17 @@ http.createServer((req, res) => {
   req.on("data", (c) => (body += c));
   req.on("end", () => {
     calls++;
-    const prompt = JSON.parse(body).messages[0].content;
+    const content = JSON.parse(body).messages[0].content;
+    if (Array.isArray(content)) {
+      // чете страница (снимка): фалшив отговор
+      console.log(`заявка ${calls}: четене на страница`);
+      setTimeout(() => {
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ lines: ["The locals were [[suspicious]] of him.", "He decided to [[give up]] his job.", "", "It was a very quiet evening in the small town."] }) } }], usage: { prompt_tokens: 1800, completion_tokens: 120 } }));
+      }, 800);
+      return;
+    }
+    const prompt = content;
     const items = JSON.parse(prompt.slice(prompt.indexOf("Items:\n") + 7));
     console.log(`заявка ${calls}: ${items.length} думи`);
     setTimeout(() => {

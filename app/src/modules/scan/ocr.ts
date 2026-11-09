@@ -5,7 +5,7 @@ import { AUTO_THRESHOLD, buildLines, mergePasses, rawFromTesseract, toGray, with
 import type { TraceContext } from "./underline";
 import { recoverMissing } from "./recover";
 import { buildDict, correctWords, type Dict } from "./spell";
-import { loadForScan, storedCopy } from "./image";
+import { aiCopy, loadForScan, storedCopy } from "./image";
 import type { ScanResult } from "./types";
 
 /*
@@ -43,7 +43,7 @@ async function getWorker() {
   return workerPromise;
 }
 
-export type Step = "prepare" | "load" | "read" | "underline" | "recover";
+export type Step = "prepare" | "load" | "read" | "underline" | "recover" | "ai";
 
 /** Режими на сегментиране, които пускаме и обединяваме (изпитани на реални снимки: ~97% от текста). */
 export const PASSES = ["4", "6", "3"] as const;
@@ -103,7 +103,8 @@ export async function scanPage(file: File, on: (step: Step, progress?: number, p
   const dict = await getDict();
   if (dict) words = correctWords(words, dict).words;
   const image = await storedCopy(img.canvas);
-  return { words, width: img.width, height: img.height, image, ocrMs };
+  const aiImage = await aiCopy(img.canvas);
+  return { words, width: img.width, height: img.height, image, aiImage, ocrMs };
 }
 
 export { AUTO_THRESHOLD };

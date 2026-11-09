@@ -4,6 +4,7 @@ import { z } from "zod";
 import { aiEnabled } from "@/core/ai/config";
 import { BudgetError } from "@/core/ai/budget";
 import { enrichWords, type Enriched } from "@/core/ai/enrich";
+import { readPage } from "@/core/ai/readpage";
 import { checkBudget, recordUsage } from "@/core/ai/usage";
 import { requireActive } from "@/core/auth/session";
 import { saveScan } from "@/modules/scan/service";
@@ -51,7 +52,7 @@ const saveItem = z.object({
   phrase: z.string().trim().max(60).nullable().optional(),
   phraseKind: z.enum(["phrasal_verb", "idiom", "collocation"]).nullable().optional(),
 });
-const saveSchema = z.object({ width: z.number().int().min(100).max(6000), height: z.number().int().min(100).max(6000), words: z.array(scanWord).max(2500), items: z.array(saveItem).min(1).max(60), title: z.string().trim().max(80).nullable().optional() });
+const saveSchema = z.object({ pipeline: z.enum(["ai-read.v1", "browser-tesseract.v1"]).optional(), width: z.number().int().min(100).max(6000), height: z.number().int().min(100).max(6000), words: z.array(scanWord).max(2500), items: z.array(saveItem).min(1).max(60), title: z.string().trim().max(80).nullable().optional() });
 
 export type SaveOut = { ok: true; sourceId: string; created: number } | { ok: false; error: string };
 
@@ -70,6 +71,7 @@ export async function saveScanAction(fd: FormData): Promise<SaveOut> {
   if (!(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)) return { ok: false, error: "Снимката не е във вид, който приемаме." };
   const r = await saveScan(user.id, {
     title: payload.title,
+    pipeline: payload.pipeline,
     image: bytes,
     mime: "image/jpeg",
     width: payload.width,
@@ -82,4 +84,28 @@ export async function saveScanAction(fd: FormData): Promise<SaveOut> {
     })),
   });
   return { ok: true, sourceId: r.sourceId, created: r.created };
+}
+
+export type ReadOut = { ok: true; lines: string[] } | { ok: false; error: string };
+
+/** AI чете снимката: верен текст и подчертаните думи. При грешка приложението пази четенето от телефона. */
+export async function aiReadPageAction(fd: FormData): Promise<ReadOut> {
+  const { user } = await requireActive();
+  if (!aiEnabled()) return { ok: false, error: "Четенето с AI не е включено." };
+  const file = fd.get("image");
+  if (!(file instanceof File) || file.size === 0 || file.size > 3_000_000 || file.type !== "image/jpeg") return { ok: false, error: "Снимката не е във вид, който приемаме." };
+  const bytes = Buffer.from(await file.arrayBuffer());
+  if (!(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)) return { ok: false, error: "Снимката не е във вид, който приемаме." };
+  try {
+    await checkBudget(user.id, new Date(), 100_000, "ocr");
+    const r = await readPage(bytes);
+    await recordUsage({ userId: user.id, kind: "ocr", provider: "openai", model: r.model, tokensIn: r.tokensIn, tokensOut: r.tokensOut, estCostMicroEur: r.estCostMicroEur, ok: true });
+    return { ok: true, lines: r.lines };
+  } catch (e) {
+    if (e instanceof BudgetError) return { ok: false, error: e.message };
+    await recordUsage({ userId: user.id, kind: "ocr", provider: "openai", model: "", tokensIn: 0, tokensOut: 0, estCostMicroEur: 0, ok: false }).catch(() => {});
+    // показваме само нашите съобщения, не техническите (напр. „fetch failed“)
+    const ours = e instanceof Error && /Ползвам четенето в телефона/.test(e.message);
+    return { ok: false, error: ours ? (e as Error).message : "Четенето с AI не успя." };
+  }
 }

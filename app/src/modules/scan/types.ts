@@ -23,5 +23,7 @@ export type ScanResult = {
   height: number;
   /** компресирана снимка за съхранение */
   image: Blob;
+  /** по-едра снимка за четене с AI (само ако е включено) */
+  aiImage: Blob;
   ocrMs: number;
 };

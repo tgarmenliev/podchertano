@@ -58,3 +58,10 @@ export async function storedCopy(canvas: HTMLCanvasElement): Promise<Blob> {
   if (!blob) throw new ImageError("Не успях да компресирам снимката.");
   return blob;
 }
+
+/** Снимка за четене с AI: по-едра от запазваната, но малка за изпращане (обикновено под 1 MB). */
+export async function aiCopy(canvas: HTMLCanvasElement): Promise<Blob> {
+  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.85));
+  if (!blob) throw new ImageError("Не успях да подготвя снимката.");
+  return blob;
+}
