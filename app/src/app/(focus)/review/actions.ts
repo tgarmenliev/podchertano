@@ -7,7 +7,7 @@ import { submitReview } from "@/modules/review/service";
 const schema = z.object({
   logId: z.uuid(),
   cardId: z.uuid(),
-  mode: z.enum(["recognize", "type_from_bg", "cloze"]),
+  mode: z.enum(["recognize", "type_from_bg", "cloze", "choice", "listen"]),
   rating: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   correct: z.boolean(),
   typedAnswer: z.string().max(200).nullable(),

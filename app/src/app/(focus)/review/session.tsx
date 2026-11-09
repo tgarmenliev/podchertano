@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { judge, type Verdict } from "@/core/srs/answer";
-import { ratingFromResult } from "@/core/srs/scheduler";
+import { isFast, ratingFromResult } from "@/core/srs/scheduler";
 import { enqueue, flushOutbox, type OutboxItem } from "@/core/offline/outbox";
 import { IconCheck, IconClose, IconEye, IconSpeaker } from "@/design/icons";
-import type { QueueItem } from "@/modules/review/service";
+import type { Mode, QueueItem } from "@/modules/review/service";
 import { posLabel } from "@/modules/vocab/pos";
 import { submitReviewAction } from "./actions";
 import { keepFocus } from "@/design/keep-focus";
 
-const modeLabel = { recognize: "Помниш ли думата?", type_from_bg: "Как е на английски?", cloze: "Допълни думата" } as const;
+const modeLabel = { recognize: "Помниш ли думата?", type_from_bg: "Как е на английски?", cloze: "Допълни думата", choice: "Избери правилната дума", listen: "Чуй и напиши" } as const;
 const send = (i: OutboxItem) => submitReviewAction(i);
 
 /** Колко други карти минават, преди грешната или новата дума да се върне. */
@@ -48,16 +48,29 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
     startedAt.current = Date.now();
   }, [card?.cardId, entry?.stage, entry?.retry]);
 
+  const [canSpeak, setCanSpeak] = useState(true);
+  useEffect(() => setCanSpeak("speechSynthesis" in window), []);
+  /** Режимът, който наистина се показва: без говор слушането става писане, без изречение – писане. */
+  const mode: Mode = !card
+    ? "type_from_bg"
+    : card.mode === "choice" && card.options
+      ? "choice"
+      : card.mode === "listen" && canSpeak
+        ? "listen"
+        : card.mode === "cloze" && card.cloze
+          ? "cloze"
+          : "type_from_bg";
+
   const finishedAll = !card;
   const pct = Math.round((done / total) * 100);
 
   /** Свободното упражнение не променя графика: нищо не се записва. */
-  function record(item: QueueItem, rating: 1 | 2 | 3, correct: boolean, typed: string | null) {
+  function record(item: QueueItem, rating: 1 | 2 | 3 | 4, correct: boolean, typed: string | null) {
     if (practice) return;
     enqueue({
       logId: crypto.randomUUID(),
       cardId: item.cardId,
-      mode: item.mode,
+      mode,
       rating,
       correct,
       typedAnswer: typed,
@@ -88,7 +101,21 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
     setVerdict(r.verdict);
     if (r.verdict === "wrong") return; // записва се при „Следваща“, за да може да се каже „Бях прав“
     if (!entry.retry) {
-      record(card, ratingFromResult({ verdict: r.verdict, hintUsed: hint }), true, value);
+      const fast = !card.isNew && isFast(Date.now() - startedAt.current, lettersOf(card.phrase ?? card.lemma));
+      record(card, ratingFromResult({ verdict: r.verdict, hintUsed: hint, fast }), true, value);
+      setAsked((n) => n + 1);
+      setFirstTry((n) => n + 1);
+    }
+  }
+
+  /** Избор от отговори: оценката е веднага; грешният се записва при „Следваща“. */
+  function pick(opt: string) {
+    if (verdict) return;
+    setValue(opt);
+    const ok = card.answers.some((a) => a.toLowerCase() === opt.toLowerCase());
+    setVerdict(ok ? "correct" : "wrong");
+    if (ok && !entry.retry) {
+      record(card, 3, true, opt);
       setAsked((n) => n + 1);
       setFirstTry((n) => n + 1);
     }
@@ -119,6 +146,14 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
     }
     resetInput();
   }
+
+  useEffect(() => {
+    if (mode === "listen" && entry?.stage === "ask" && "speechSynthesis" in window) {
+      const t = setTimeout(speak, 350);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card?.cardId, entry?.stage, entry?.retry, mode]);
 
   function speak() {
     if (!card || !("speechSynthesis" in window)) return;
@@ -173,7 +208,6 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
   const wrong = verdict === "wrong";
   const intro = entry.stage === "intro";
   const clozeText = card.cloze;
-  const mode = card.mode === "cloze" && clozeText ? "cloze" : "type_from_bg";
   const label = intro ? "Нова дума" : entry.retry ? "Още веднъж" : modeLabel[mode];
 
   return (
@@ -232,6 +266,50 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
           </>
         )}
 
+        {!intro && mode === "choice" && (
+          <>
+            <p className="read mt-4 text-[34px] font-medium leading-tight">{card.translationBg}</p>
+            {card.meaningBg && <p className="mt-3 text-ink-2">{card.meaningBg}</p>}
+            <div className="mt-8 grid gap-2" role="group" aria-label="Варианти">
+              {card.options!.map((o) => {
+                const isRight = card.answers.some((a) => a.toLowerCase() === o.toLowerCase());
+                const chosen = locked && value === o;
+                return (
+                  <button
+                    key={o}
+                    type="button"
+                    disabled={locked}
+                    onClick={() => pick(o)}
+                    className="read min-h-14 rounded-[var(--radius-m)] border-[1.5px] px-4 text-left text-[20px] transition-colors active:bg-surface-2"
+                    style={{
+                      borderColor: locked && isRight ? "var(--ok)" : chosen ? "var(--accent)" : "var(--line)",
+                      background: locked && isRight ? "var(--ok-tint)" : "var(--surface)",
+                      opacity: locked && !isRight && !chosen ? 0.55 : 1,
+                    }}
+                  >
+                    {o}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {!intro && mode === "listen" && (
+          <div className="mt-6">
+            <button type="button" onClick={speak} className="btn btn-secondary !min-h-16 w-full text-[18px]">
+              <IconSpeaker width={26} height={26} />
+              Чуй думата
+            </button>
+            {locked && (
+              <>
+                <p className="mt-5 text-ink-2">Значение: {card.translationBg}</p>
+                {card.exampleEn && <p className="read mt-3 text-[17px] italic leading-snug text-ink-2">{card.exampleEn}</p>}
+              </>
+            )}
+          </div>
+        )}
+
         {!intro && mode === "type_from_bg" && (
           <>
             <p className="read mt-4 text-[34px] font-medium leading-tight">{card.translationBg}</p>
@@ -240,8 +318,8 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
           </>
         )}
 
-        {!intro && (
-          <div className="mt-8">
+        {!intro && mode !== "choice" && (
+          <div className={mode === "listen" ? "mt-5" : "mt-8"}>
             <label htmlFor="answer" className="sr-only">
               Твоят отговор
             </label>
@@ -294,7 +372,7 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
               </p>
             )}
             {wrong && !entry.retry && <p className="mt-1 text-[15px] text-ink-3">Ще те попитам пак след малко.</p>}
-            {wrong && (
+            {wrong && mode !== "choice" && (
               <button type="button" className="mt-2 text-[15px] text-ink-2 underline underline-offset-4" onMouseDown={keepFocus} onClick={iWasRight}>
                 Бях прав
               </button>
@@ -304,16 +382,18 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
 
         <div className="mt-auto" style={{ paddingBottom: "max(var(--safe-bottom), 16px)" }}>
           <div className="flex items-center gap-2 pb-3 pt-6">
-            {!intro && (
+            {!intro && mode !== "choice" && (
               <button type="button" className="btn btn-ghost !min-h-11 !px-3 text-[15px]" onMouseDown={keepFocus} onClick={() => setHint(true)} disabled={locked || hint}>
                 <IconEye width={20} height={20} />
                 Подсказка
               </button>
             )}
-            <button type="button" className="btn btn-ghost !min-h-11 !px-3 text-[15px]" onClick={speak}>
-              <IconSpeaker width={20} height={20} />
-              Чуй
-            </button>
+            {(intro || locked) && (
+              <button type="button" className="btn btn-ghost !min-h-11 !px-3 text-[15px]" onClick={speak}>
+                <IconSpeaker width={20} height={20} />
+                Чуй
+              </button>
+            )}
           </div>
 
           {intro ? (
@@ -324,6 +404,8 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
             <button type="button" className="btn btn-primary w-full" onMouseDown={keepFocus} onClick={advance}>
               Следваща
             </button>
+          ) : mode === "choice" ? (
+            <p className="py-3 text-center text-[15px] text-ink-3">Докосни отговора</p>
           ) : (
             <button type="button" className="btn btn-primary w-full" onMouseDown={keepFocus} onClick={check} disabled={!value.trim()}>
               Провери

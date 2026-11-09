@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { judge, normalize } from "./answer";
 import { dayKey, startOfDay, streak } from "./day";
-import { isKnown, newCardRow, ratingFromResult, review, statusOf } from "./scheduler";
+import { isFast, isKnown, newCardRow, ratingFromResult, review, statusOf } from "./scheduler";
 
 describe("judge", () => {
   it("точно съвпадение, без значение на регистъра и пунктуацията", () => {
@@ -103,5 +103,19 @@ describe("judge: справедлива проверка", () => {
   });
   it("приема всяка от допустимите думи (напр. синоним от друга карта)", () => {
     expect(judge("large", ["big", "large"]).verdict).toBe("correct");
+  });
+});
+
+describe("оценка „Лесно“", () => {
+  it("бърз верен отговор без подсказка е Лесно, но не при подсказка или грешка", () => {
+    expect(ratingFromResult({ verdict: "correct", hintUsed: false, fast: true })).toBe(4);
+    expect(ratingFromResult({ verdict: "correct", hintUsed: true, fast: true })).toBe(2);
+    expect(ratingFromResult({ verdict: "almost", hintUsed: false, fast: true })).toBe(2);
+    expect(ratingFromResult({ verdict: "wrong", hintUsed: false, fast: true })).toBe(1);
+  });
+  it("прагът расте с дължината на думата", () => {
+    expect(isFast(3000, 3)).toBe(true);
+    expect(isFast(9000, 3)).toBe(false);
+    expect(isFast(5000, 10)).toBe(true);
   });
 });

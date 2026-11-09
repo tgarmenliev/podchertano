@@ -220,7 +220,7 @@ export const reviewLogs = pgTable(
     id: uuid("id").primaryKey(),
     userId: text("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
     cardId: uuid("card_id").notNull().references(() => srsCards.id, { onDelete: "cascade" }),
-    mode: text("mode", { enum: ["recognize", "type_from_bg", "cloze"] }).notNull(),
+    mode: text("mode", { enum: ["recognize", "type_from_bg", "cloze", "choice", "listen"] }).notNull(),
     rating: integer("rating").notNull(), // 1 Again, 2 Hard, 3 Good, 4 Easy
     correct: boolean("correct").notNull(),
     typedAnswer: text("typed_answer"),

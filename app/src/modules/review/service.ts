@@ -4,7 +4,7 @@ import { encounters, profiles, reviewLogs, srsCards, vocabItems } from "@/core/d
 import { dayKey, startOfDay, streak } from "@/core/srs/day";
 import { review, statusOf, type CardRow } from "@/core/srs/scheduler";
 
-export type Mode = "recognize" | "type_from_bg" | "cloze";
+export type Mode = "recognize" | "type_from_bg" | "cloze" | "choice" | "listen";
 
 export type QueueItem = {
   cardId: string;
@@ -21,6 +21,8 @@ export type QueueItem = {
   exampleEn: string | null;
   /** приети отговори (формата от текста, основната форма, фразата) */
   answers: string[];
+  /** за режим „избор“: 4 варианта (верният е вътре), разбъркани */
+  options: string[] | null;
   /** оригиналното изречение от страницата */
   sentence: string | null;
   /** същото изречение с ___ на мястото на думата (за режим cloze) */
@@ -36,12 +38,42 @@ export function maskSentence(sentence: string, surface: string): string | null {
   return re.test(sentence) ? sentence.replace(re, "___") : null;
 }
 
-/** Режимът зависи от етапа на картата и от това дали има изречение. */
-export function pickMode(card: { state: number; reps: number }, hasCloze: boolean): Mode {
-  // новата дума се пита едва след запознанството: с изречение, ако има, иначе по превода
-  if (card.state === 0) return hasCloze ? "cloze" : "type_from_bg";
-  if (!hasCloze) return "type_from_bg";
-  return card.state === 2 && card.reps % 2 === 0 ? "type_from_bg" : "cloze";
+/**
+ * Режимът зависи от етапа на картата:
+ * нова → избор от 4 (ако има достатъчно други думи за варианти), иначе изречение/писане;
+ * в учене → изречение или избор; в преговор → писане, изречение и слушане на смени (по броя прегледи).
+ */
+export function pickMode(card: { state: number; reps: number }, hasCloze: boolean, canChoice = false): Mode {
+  if (card.state === 0) return canChoice ? "choice" : hasCloze ? "cloze" : "type_from_bg";
+  if (card.state !== 2) {
+    if (hasCloze) return card.reps % 2 === 0 ? "cloze" : canChoice ? "choice" : "cloze";
+    return canChoice ? "choice" : "type_from_bg";
+  }
+  const turn = card.reps % 3;
+  if (turn === 2) return "listen";
+  if (turn === 1 && hasCloze) return "cloze";
+  return "type_from_bg";
+}
+
+const shuffle = <T,>(a: T[]): T[] => {
+  const x = [...a];
+  for (let i = x.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [x[i], x[j]] = [x[j], x[i]];
+  }
+  return x;
+};
+
+/** Три грешни варианта: най-напред от същия вид дума, после от останалите; null, ако не стигат. */
+export function pickDistractors(target: string, accepted: string[], pool: { target: string; pos: string }[], pos: string): string[] | null {
+  const bad = new Set(accepted.map((x) => x.toLowerCase()));
+  bad.add(target.toLowerCase());
+  const ok = pool.filter((p) => !bad.has(p.target.toLowerCase()));
+  const uniq = (l: typeof ok) => [...new Map(l.map((p) => [p.target.toLowerCase(), p.target])).values()];
+  const same = shuffle(uniq(ok.filter((p) => p.pos === pos)));
+  const rest = shuffle(uniq(ok.filter((p) => p.pos !== pos))).filter((t) => !same.some((s) => s.toLowerCase() === t.toLowerCase()));
+  const out = [...same, ...rest].slice(0, 3);
+  return out.length === 3 ? out : null;
 }
 
 /** Смесва нови карти между чакащите: след всеки две стари идва една нова (останалите отзад). */
@@ -115,7 +147,7 @@ async function buildItems(userId: string, cards: (typeof srsCards.$inferSelect)[
   const [words, encs, everyWord] = await Promise.all([
     db.select().from(vocabItems).where(inArray(vocabItems.id, ids)),
     db.select().from(encounters).where(inArray(encounters.vocabItemId, ids)).orderBy(desc(encounters.createdAt)),
-    db.select({ id: vocabItems.id, lemma: vocabItems.lemma, phrase: vocabItems.phrase, tr: vocabItems.translationBg }).from(vocabItems).where(eq(vocabItems.userId, userId)),
+    db.select({ id: vocabItems.id, lemma: vocabItems.lemma, phrase: vocabItems.phrase, pos: vocabItems.pos, tr: vocabItems.translationBg }).from(vocabItems).where(eq(vocabItems.userId, userId)),
   ]);
   const wordById = new Map(words.map((w) => [w.id, w]));
   const latestEnc = new Map<string, (typeof encs)[number]>();
@@ -127,6 +159,7 @@ async function buildItems(userId: string, cards: (typeof srsCards.$inferSelect)[
     sameTr.set(k, [...(sameTr.get(k) ?? []), { id: v.id, target: v.phrase ?? v.lemma }]);
   }
 
+  const pool = everyWord.map((v) => ({ id: v.id, target: v.phrase ?? v.lemma, pos: v.pos }));
   const items: QueueItem[] = [];
   for (const c of cards) {
     const w = wordById.get(c.itemId);
@@ -135,8 +168,10 @@ async function buildItems(userId: string, cards: (typeof srsCards.$inferSelect)[
     const target = w.phrase ?? w.lemma;
     const surface = enc?.surfaceForm ?? null;
     const masked = enc ? maskSentence(enc.sentence, enc.surfaceForm) : null;
-    const mode = pickMode(c, !!masked);
     const others = (sameTr.get(w.translationBg.trim().toLowerCase()) ?? []).filter((o) => o.id !== w.id).map((o) => o.target);
+    const accepted = [...new Set([target, ...(surface ? [surface] : []), ...others])];
+    const wrongOnes = pickDistractors(target, accepted, pool.filter((p) => p.id !== w.id), w.pos);
+    const mode = pickMode(c, !!masked, !!wrongOnes);
     items.push({
       cardId: c.id,
       mode,
@@ -149,7 +184,8 @@ async function buildItems(userId: string, cards: (typeof srsCards.$inferSelect)[
       translationAltBg: w.translationAltBg,
       meaningBg: w.meaningBg,
       exampleEn: w.exampleEn,
-      answers: [...new Set([target, ...(surface ? [surface] : []), ...others])],
+      answers: accepted,
+      options: mode === "choice" && wrongOnes ? shuffle([target, ...wrongOnes]) : null,
       sentence: enc?.sentence ?? null,
       cloze: masked,
       surface,

@@ -51,12 +51,18 @@ export function review(row: CardRow, rating: 1 | 2 | 3 | 4, now: Date): CardRow 
   return fromCard(scheduler.next(toCard(row), now, grade).card);
 }
 
-/** Автоматична оценка от резултата (без бутони за „лесно/трудно“). */
-export function ratingFromResult(r: { verdict: "correct" | "almost" | "wrong"; hintUsed: boolean }): 1 | 2 | 3 {
+/**
+ * Автоматична оценка от резултата (без бутони за „лесно/трудно“).
+ * „Лесно“ (4): вярно, без подсказка, написано бързо; не важи за избор от отговори и за нови думи.
+ */
+export function ratingFromResult(r: { verdict: "correct" | "almost" | "wrong"; hintUsed: boolean; fast?: boolean }): 1 | 2 | 3 | 4 {
   if (r.verdict === "wrong") return 1;
   if (r.verdict === "almost" || r.hintUsed) return 2;
-  return 3;
+  return r.fast ? 4 : 3;
 }
+
+/** Бърз отговор: до 2,5 s плюс 0,25 s на буква (колкото да се напише). */
+export const isFast = (durationMs: number, letters: number) => durationMs <= 2500 + 250 * letters;
 
 /** Дума е „усвоена“, когато картата е в преговор и паметта ѝ издържа поне 21 дни. */
 export const isKnown = (row: Pick<CardRow, "state" | "stability">) => row.state === State.Review && row.stability >= 21;
