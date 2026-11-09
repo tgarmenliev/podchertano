@@ -29,7 +29,7 @@ assert(maskSentence("He was unsuspicious.", "suspicious") === null, "не мас
 
 const q1 = await getQueue(U);
 assert(q1.length === 2, "дневният лимит за нови е 2 (от 3 нови)");
-assert(q1.every((x) => x.mode === "recognize" && x.isNew), "нови карти започват с разпознаване");
+assert(q1.every((x) => x.intro && x.isNew), "нови карти започват със запознанство");
 const stats0 = await getStats(U);
 assert(stats0.counts.new === 3 && stats0.newAvailable === 2 && stats0.streak === 0, "начална статистика");
 
@@ -45,7 +45,7 @@ const q2 = await getQueue(U, now);
 assert(q2.length === 0, "новите за деня са изчерпани, а картите още не са дължими");
 const later = new Date(now.getTime() + 15 * 60_000);
 const q3 = await getQueue(U, later);
-assert(q3.length >= 1 && q3.some((x) => x.mode !== "recognize"), "след 15 мин. картата, отговорена грешно, се връща (в учене)");
+assert(q3.length >= 1 && q3.some((x) => !x.intro), "след 15 мин. картата, отговорена грешно, се връща (в учене)");
 const st = await getStats(U, later);
 assert(st.counts.learning === 2 && st.streak === 1 && st.reviewsToday === 2, "статистика след преглед: 2 в учене, серия 1, 2 днес");
 assert(st.days.length === 14 && st.days[13].n === 2, "последните 14 дни");

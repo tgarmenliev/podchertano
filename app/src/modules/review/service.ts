@@ -10,6 +10,8 @@ export type QueueItem = {
   cardId: string;
   mode: Mode;
   isNew: boolean;
+  /** нова дума: първо кратко запознанство (без оценка), после въпрос след няколко други карти */
+  intro: boolean;
   lemma: string;
   phrase: string | null;
   pos: string;
@@ -19,8 +21,10 @@ export type QueueItem = {
   exampleEn: string | null;
   /** приети отговори (формата от текста, основната форма, фразата) */
   answers: string[];
-  /** изречението: за cloze е с ___ на мястото на думата, иначе е оригиналното */
+  /** оригиналното изречение от страницата */
   sentence: string | null;
+  /** същото изречение с ___ на мястото на думата (за режим cloze) */
+  cloze: string | null;
   surface: string | null;
 };
 
@@ -34,16 +38,36 @@ export function maskSentence(sentence: string, surface: string): string | null {
 
 /** Режимът зависи от етапа на картата и от това дали има изречение. */
 export function pickMode(card: { state: number; reps: number }, hasCloze: boolean): Mode {
-  if (card.state === 0) return "recognize";
+  // новата дума се пита едва след запознанството: с изречение, ако има, иначе по превода
+  if (card.state === 0) return hasCloze ? "cloze" : "type_from_bg";
   if (!hasCloze) return "type_from_bg";
   return card.state === 2 && card.reps % 2 === 0 ? "type_from_bg" : "cloze";
 }
 
-export async function getQueue(userId: string, now = new Date(), opts: { cap?: number } = {}): Promise<QueueItem[]> {
-  const cap = opts.cap ?? 25;
+/** Смесва нови карти между чакащите: след всеки две стари идва една нова (останалите отзад). */
+export function interleave<T>(due: T[], fresh: T[]): T[] {
+  const out: T[] = [];
+  let d = 0;
+  let f = 0;
+  while (d < due.length || f < fresh.length) {
+    for (let k = 0; k < 2 && d < due.length; k++) out.push(due[d++]);
+    if (f < fresh.length) out.push(fresh[f++]);
+    else while (d < due.length) out.push(due[d++]);
+  }
+  return out;
+}
+
+/**
+ * opts.more: още нови думи отгоре на дневния лимит (бутон „Още“).
+ * opts.practice: упражнение върху най-слабите вече учени думи; не променя графика.
+ */
+export async function getQueue(userId: string, now = new Date(), opts: { cap?: number; more?: number; practice?: boolean } = {}): Promise<QueueItem[]> {
+  const cap = opts.cap ?? 25 + (opts.more ?? 0);
   const [profile] = await db.select().from(profiles).where(eq(profiles.id, userId));
   const tz = profile?.timezone ?? "Europe/Sofia";
   const sod = startOfDay(now, tz);
+
+  if (opts.practice) return practiceQueue(userId, now);
 
   const [introducedToday, due] = await Promise.all([
     db
@@ -57,7 +81,7 @@ export async function getQueue(userId: string, now = new Date(), opts: { cap?: n
       .orderBy(asc(srsCards.due))
       .limit(cap),
   ]);
-  const newAllowed = Math.max(0, (profile?.dailyNewWords ?? 8) - (introducedToday[0]?.n ?? 0));
+  const newAllowed = Math.max(0, (profile?.dailyNewWords ?? 8) - (introducedToday[0]?.n ?? 0)) + (opts.more ?? 0);
   const fresh =
     newAllowed > 0
       ? await db
@@ -70,17 +94,38 @@ export async function getQueue(userId: string, now = new Date(), opts: { cap?: n
           .then((r) => r.map((x) => x.c))
       : [];
 
-  const cards = [...due, ...fresh];
+  return buildItems(userId, interleave(due, fresh));
+}
+
+/** Най-слабите вече учени думи, които още не са за преговор: за свободно упражнение. */
+async function practiceQueue(userId: string, now: Date): Promise<QueueItem[]> {
+  const cards = await db
+    .select()
+    .from(srsCards)
+    .where(and(eq(srsCards.userId, userId), eq(srsCards.suspended, false), ne(srsCards.state, 0), gte(srsCards.due, now)))
+    .orderBy(asc(srsCards.stability))
+    .limit(10);
+  return buildItems(userId, cards);
+}
+
+async function buildItems(userId: string, cards: (typeof srsCards.$inferSelect)[]): Promise<QueueItem[]> {
   if (!cards.length) return [];
   const ids = cards.map((c) => c.itemId);
-  // две заявки за всички карти (вместо две на карта): по-бързо при далечна база
-  const [words, encs] = await Promise.all([
+  // заявки за всички карти наведнъж (вместо по няколко на карта): по-бързо при далечна база
+  const [words, encs, everyWord] = await Promise.all([
     db.select().from(vocabItems).where(inArray(vocabItems.id, ids)),
     db.select().from(encounters).where(inArray(encounters.vocabItemId, ids)).orderBy(desc(encounters.createdAt)),
+    db.select({ id: vocabItems.id, lemma: vocabItems.lemma, phrase: vocabItems.phrase, tr: vocabItems.translationBg }).from(vocabItems).where(eq(vocabItems.userId, userId)),
   ]);
   const wordById = new Map(words.map((w) => [w.id, w]));
   const latestEnc = new Map<string, (typeof encs)[number]>();
   for (const e of encs) if (!latestEnc.has(e.vocabItemId)) latestEnc.set(e.vocabItemId, e);
+  // думи със същия български превод са взаимозаменяеми (big/large): приемат се като верен отговор
+  const sameTr = new Map<string, { id: string; target: string }[]>();
+  for (const v of everyWord) {
+    const k = v.tr.trim().toLowerCase();
+    sameTr.set(k, [...(sameTr.get(k) ?? []), { id: v.id, target: v.phrase ?? v.lemma }]);
+  }
 
   const items: QueueItem[] = [];
   for (const c of cards) {
@@ -91,10 +136,12 @@ export async function getQueue(userId: string, now = new Date(), opts: { cap?: n
     const surface = enc?.surfaceForm ?? null;
     const masked = enc ? maskSentence(enc.sentence, enc.surfaceForm) : null;
     const mode = pickMode(c, !!masked);
+    const others = (sameTr.get(w.translationBg.trim().toLowerCase()) ?? []).filter((o) => o.id !== w.id).map((o) => o.target);
     items.push({
       cardId: c.id,
       mode,
       isNew: c.state === 0,
+      intro: c.state === 0,
       lemma: w.lemma,
       phrase: w.phrase,
       pos: w.pos,
@@ -102,8 +149,9 @@ export async function getQueue(userId: string, now = new Date(), opts: { cap?: n
       translationAltBg: w.translationAltBg,
       meaningBg: w.meaningBg,
       exampleEn: w.exampleEn,
-      answers: [...new Set([target, ...(surface ? [surface] : [])])],
-      sentence: mode === "cloze" ? masked : (enc?.sentence ?? null),
+      answers: [...new Set([target, ...(surface ? [surface] : []), ...others])],
+      sentence: enc?.sentence ?? null,
+      cloze: masked,
       surface,
     });
   }

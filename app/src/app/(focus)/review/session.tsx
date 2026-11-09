@@ -14,19 +14,28 @@ import { keepFocus } from "@/design/keep-focus";
 const modeLabel = { recognize: "Помниш ли думата?", type_from_bg: "Как е на английски?", cloze: "Допълни думата" } as const;
 const send = (i: OutboxItem) => submitReviewAction(i);
 
-export function ReviewSession({ items }: { items: QueueItem[] }) {
-  const [queue, setQueue] = useState(items);
+/** Колко други карти минават, преди грешната или новата дума да се върне. */
+const GAP = 3;
+type Entry = { item: QueueItem; stage: "intro" | "ask"; retry: boolean };
+const insertAt = (q: Entry[], e: Entry) => [...q.slice(0, GAP), e, ...q.slice(GAP)];
+const lettersOf = (t: string) => t.replace(/\s/g, "").length;
+
+export function ReviewSession({ items, practice = false }: { items: QueueItem[]; practice?: boolean }) {
+  const [queue, setQueue] = useState<Entry[]>(() => items.map((item) => ({ item, stage: item.intro ? "intro" : "ask", retry: false })));
   const [done, setDone] = useState(0);
   const [firstTry, setFirstTry] = useState(0);
-  const [retried, setRetried] = useState<Set<string>>(new Set());
+  const [asked, setAsked] = useState(0);
+  const [learned, setLearned] = useState(0);
+  const [missed, setMissed] = useState<{ target: string; tr: string }[]>([]);
   const [value, setValue] = useState("");
   const [verdict, setVerdict] = useState<Exclude<Verdict, "empty"> | null>(null);
-  const [revealed, setRevealed] = useState(false);
+  const [overridden, setOverridden] = useState(false);
   const [hint, setHint] = useState(false);
   const startedAt = useRef(Date.now());
   const inputRef = useRef<HTMLInputElement>(null);
   const total = items.length;
-  const card = queue[0];
+  const entry = queue[0];
+  const card = entry?.item;
 
   useEffect(() => {
     flushOutbox(send);
@@ -37,12 +46,14 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
 
   useEffect(() => {
     startedAt.current = Date.now();
-  }, [card?.cardId, queue.length]);
+  }, [card?.cardId, entry?.stage, entry?.retry]);
 
   const finishedAll = !card;
   const pct = Math.round((done / total) * 100);
 
+  /** Свободното упражнение не променя графика: нищо не се записва. */
   function record(item: QueueItem, rating: 1 | 2 | 3, correct: boolean, typed: string | null) {
+    if (practice) return;
     enqueue({
       logId: crypto.randomUUID(),
       cardId: item.cardId,
@@ -56,31 +67,57 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
     flushOutbox(send);
   }
 
-  function advance(wasWrong: boolean) {
-    const cur = queue[0];
-    const again = wasWrong && !retried.has(cur.cardId);
-    if (again) setRetried((s) => new Set(s).add(cur.cardId));
-    else setDone((d) => d + 1);
-    setQueue((q) => (again ? [...q.slice(1), cur] : q.slice(1)));
+  function resetInput() {
     setValue("");
     setVerdict(null);
-    setRevealed(false);
+    setOverridden(false);
     setHint(false);
     setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  /** Запознанството свърши: думата се връща като въпрос след няколко други карти. */
+  function understood() {
+    setLearned((n) => n + 1);
+    setQueue((q) => insertAt(q.slice(1), { item: q[0].item, stage: "ask", retry: false }));
+    resetInput();
   }
 
   function check() {
     const r = judge(value, card.answers);
     if (r.verdict === "empty") return;
     setVerdict(r.verdict);
-    record(card, ratingFromResult({ verdict: r.verdict, hintUsed: hint }), r.verdict !== "wrong", value);
-    if (r.verdict !== "wrong" && !retried.has(card.cardId)) setFirstTry((n) => n + 1);
+    if (r.verdict === "wrong") return; // записва се при „Следваща“, за да може да се каже „Бях прав“
+    if (!entry.retry) {
+      record(card, ratingFromResult({ verdict: r.verdict, hintUsed: hint }), true, value);
+      setAsked((n) => n + 1);
+      setFirstTry((n) => n + 1);
+    }
   }
 
-  function selfRate(knew: boolean) {
-    record(card, knew ? 3 : 1, knew, null);
-    if (knew && !retried.has(card.cardId)) setFirstTry((n) => n + 1);
-    advance(!knew);
+  /** „Бях прав“: проверката е сгрешила; оценката е „Трудно“, не „Грешка“. */
+  function iWasRight() {
+    setOverridden(true);
+    setVerdict("correct");
+    if (!entry.retry) {
+      record(card, 2, true, value);
+      setAsked((n) => n + 1);
+      setFirstTry((n) => n + 1);
+    }
+  }
+
+  function advance() {
+    const wrong = verdict === "wrong" && !overridden;
+    if (wrong && !entry.retry) {
+      // само първият опит стига до графика; повторението е за запомняне
+      record(card, 1, false, value);
+      setAsked((n) => n + 1);
+      setMissed((m) => [...m, { target: card.phrase ?? card.lemma, tr: card.translationBg }]);
+      setQueue((q) => insertAt(q.slice(1), { item: q[0].item, stage: "ask", retry: true }));
+    } else {
+      setDone((d) => d + 1);
+      setQueue((q) => q.slice(1));
+    }
+    resetInput();
   }
 
   function speak() {
@@ -97,25 +134,47 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
   if (finishedAll) {
     return (
       <div className="mx-auto flex min-h-dvh max-w-xl flex-col px-5" style={{ paddingTop: "calc(var(--safe-top) + 24px)" }}>
-        <div className="mt-16">
+        <div className="mt-12">
           <h1 className="text-3xl font-semibold tracking-tight">
-            Готово.
+            {practice ? "Упражнението е готово." : "Готово."}
             <span className="wave-line mt-2 block w-24" />
           </h1>
-          <p className="mt-6 text-lg">
-            Верни от първия опит: <span className="font-semibold tabular-nums">{firstTry}</span> от {total}.
-          </p>
-          <p className="mt-2 text-ink-2">Следващият преговор на тези думи е по график.</p>
+          {asked > 0 && (
+            <p className="mt-6 text-lg">
+              Верни от първия опит: <span className="font-semibold tabular-nums">{firstTry}</span> от {asked}.
+            </p>
+          )}
+          {learned > 0 && <p className="mt-2 text-ink-2">Нови думи днес: {learned}.</p>}
+          <p className="mt-2 text-ink-2">{practice ? "Графикът не е променен." : "Следващият преговор на тези думи е по график."}</p>
+          {missed.length > 0 && (
+            <section className="mt-8" aria-labelledby="missed">
+              <h2 id="missed" className="text-base font-semibold">За още един поглед</h2>
+              <ul className="mt-2 divide-y divide-line border-y border-line">
+                {missed.map((m) => (
+                  <li key={m.target} className="flex items-baseline justify-between gap-4 py-3">
+                    <span className="read text-[19px] font-medium">{m.target}</span>
+                    <span className="text-ink-2">{m.tr}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
-        <Link href="/" className="btn btn-primary mb-8 mt-auto w-full">
-          Към началото
-        </Link>
+        <div className="mb-8 mt-auto flex flex-col gap-2 pt-8">
+          {!practice && <a href="/review?more=10" className="btn btn-secondary w-full">Още 10 нови думи</a>}
+          <a href="/review?practice=1" className="btn btn-secondary w-full">Упражнение: най-слабите думи</a>
+          <Link href="/" className="btn btn-primary w-full">Към началото</Link>
+        </div>
       </div>
     );
   }
 
   const locked = verdict !== null;
   const wrong = verdict === "wrong";
+  const intro = entry.stage === "intro";
+  const clozeText = card.cloze;
+  const mode = card.mode === "cloze" && clozeText ? "cloze" : "type_from_bg";
+  const label = intro ? "Нова дума" : entry.retry ? "Още веднъж" : modeLabel[mode];
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-xl flex-col">
@@ -132,34 +191,30 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
         </p>
       </header>
 
-      <main className="flex flex-1 flex-col px-5 pt-8" key={card.cardId + queue.length}>
+      <main className="flex flex-1 flex-col px-5 pt-8" key={`${card.cardId}-${entry.stage}-${entry.retry}-${done}`}>
         <p className="text-sm text-ink-2">
-          {modeLabel[card.mode]}
+          {label}
           {card.pos ? ` · ${posLabel(card.pos)}` : ""}
-          {card.isNew ? " · нова" : ""}
+          {practice ? " · упражнение" : ""}
         </p>
 
-        {card.mode === "recognize" && (
+        {intro && (
           <>
             <p className="read mt-4 text-[38px] font-medium leading-tight">{target}</p>
-            {card.sentence && (
-              <p className="read mt-4 text-[19px] italic leading-snug text-ink-2">{card.sentence}</p>
-            )}
-            {revealed && (
-              <div className="mt-8 border-t border-line pt-5">
-                <p className="text-2xl font-medium">{card.translationBg}</p>
-                {card.translationAltBg && <p className="mt-1 text-ink-2">{card.translationAltBg}</p>}
-                {card.meaningBg && <p className="mt-3 text-ink-2">{card.meaningBg}</p>}
-                {card.exampleEn && <p className="read mt-3 text-[17px] italic text-ink-2">{card.exampleEn}</p>}
-              </div>
-            )}
+            <div className="mt-6 border-t border-line pt-5">
+              <p className="text-2xl font-medium">{card.translationBg}</p>
+              {card.translationAltBg && <p className="mt-1 text-ink-2">{card.translationAltBg}</p>}
+              {card.meaningBg && <p className="mt-3 text-ink-2">{card.meaningBg}</p>}
+              {(card.sentence || card.exampleEn) && <p className="read mt-4 text-[18px] italic leading-snug text-ink-2">{card.sentence ?? card.exampleEn}</p>}
+            </div>
+            <p className="mt-6 text-[15px] text-ink-3">Прочети я и я чуй. След няколко думи ще те попитам за нея.</p>
           </>
         )}
 
-        {card.mode === "cloze" && (
+        {!intro && mode === "cloze" && (
           <>
             <p className="read mt-4 text-[24px] leading-[1.5] text-ink">
-              {(card.sentence ?? "").split("___").map((part, k, arr) => (
+              {(clozeText ?? "").split("___").map((part, k, arr) => (
                 <span key={k}>
                   {part}
                   {k < arr.length - 1 &&
@@ -177,7 +232,7 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
           </>
         )}
 
-        {card.mode === "type_from_bg" && (
+        {!intro && mode === "type_from_bg" && (
           <>
             <p className="read mt-4 text-[34px] font-medium leading-tight">{card.translationBg}</p>
             {card.meaningBg && <p className="mt-3 text-ink-2">{card.meaningBg}</p>}
@@ -185,7 +240,7 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
           </>
         )}
 
-        {card.mode !== "recognize" && (
+        {!intro && (
           <div className="mt-8">
             <label htmlFor="answer" className="sr-only">
               Твоят отговор
@@ -206,10 +261,10 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key !== "Enter") return;
-                if (locked) advance(wrong);
+                if (locked) advance();
                 else check();
               }}
-              placeholder={hint ? `${target.slice(0, Math.min(2, Math.ceil(target.length / 3)))}…` : "Напиши отговора"}
+              placeholder={hint ? `${target[0]}… (${lettersOf(target)} букви)` : "Напиши отговора"}
               autoCapitalize="none"
               autoCorrect="off"
               autoComplete="off"
@@ -238,12 +293,18 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
                 <span className="read text-[18px] font-semibold text-ink">{target}</span>
               </p>
             )}
+            {wrong && !entry.retry && <p className="mt-1 text-[15px] text-ink-3">Ще те попитам пак след малко.</p>}
+            {wrong && (
+              <button type="button" className="mt-2 text-[15px] text-ink-2 underline underline-offset-4" onMouseDown={keepFocus} onClick={iWasRight}>
+                Бях прав
+              </button>
+            )}
           </div>
         )}
 
         <div className="mt-auto" style={{ paddingBottom: "max(var(--safe-bottom), 16px)" }}>
           <div className="flex items-center gap-2 pb-3 pt-6">
-            {card.mode !== "recognize" && (
+            {!intro && (
               <button type="button" className="btn btn-ghost !min-h-11 !px-3 text-[15px]" onMouseDown={keepFocus} onClick={() => setHint(true)} disabled={locked || hint}>
                 <IconEye width={20} height={20} />
                 Подсказка
@@ -255,23 +316,12 @@ export function ReviewSession({ items }: { items: QueueItem[] }) {
             </button>
           </div>
 
-          {card.mode === "recognize" ? (
-            revealed ? (
-              <div className="grid grid-cols-2 gap-3">
-                <button type="button" className="btn btn-secondary" onClick={() => selfRate(false)}>
-                  Не я знаех
-                </button>
-                <button type="button" className="btn btn-primary" onClick={() => selfRate(true)}>
-                  Знаех я
-                </button>
-              </div>
-            ) : (
-              <button type="button" className="btn btn-primary w-full" onClick={() => setRevealed(true)}>
-                Покажи превода
-              </button>
-            )
+          {intro ? (
+            <button type="button" className="btn btn-primary w-full" onClick={understood}>
+              Разбрах
+            </button>
           ) : locked ? (
-            <button type="button" className="btn btn-primary w-full" onMouseDown={keepFocus} onClick={() => advance(wrong)}>
+            <button type="button" className="btn btn-primary w-full" onMouseDown={keepFocus} onClick={advance}>
               Следваща
             </button>
           ) : (

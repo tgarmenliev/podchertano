@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { eq } from "drizzle-orm";
 import { requireActive } from "@/core/auth/session";
+import { db } from "@/core/db";
+import { profiles } from "@/core/db/schema";
 import { IconBack } from "@/design/icons";
+import { DailyNew } from "./daily-new";
 import { PasswordForm } from "./password-form";
 import { SignOutButton } from "./sign-out";
 import { ThemeChoice } from "./theme-choice";
@@ -9,6 +13,7 @@ export const metadata = { title: "Настройки" };
 
 export default async function Settings() {
   const { user } = await requireActive();
+  const [profile] = await db.select({ n: profiles.dailyNewWords }).from(profiles).where(eq(profiles.id, user.id));
   return (
     <div className="mx-auto min-h-dvh max-w-xl">
       <header
@@ -27,6 +32,14 @@ export default async function Settings() {
             Акаунт
           </h2>
           <p className="mt-1 text-lg font-medium">{(user as { username?: string | null }).username ?? user.name}</p>
+        </section>
+
+        <section aria-labelledby="newwords">
+          <h2 id="newwords" className="text-sm text-ink-2">
+            Нови думи на ден
+          </h2>
+          <DailyNew initial={profile?.n ?? 8} />
+          <p className="mt-2 text-[14px] text-ink-3">Колко нови думи да се добавят към преговора всеки ден. Можеш да поискаш още от края на преговора.</p>
         </section>
 
         <section aria-labelledby="theme">

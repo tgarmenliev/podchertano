@@ -78,3 +78,30 @@ describe("дни и серия", () => {
     expect(streak([], tz, now)).toBe(0);
   });
 });
+
+describe("judge: справедлива проверка", () => {
+  it("без to и член отпред", () => {
+    expect(judge("go", ["to go"]).verdict).toBe("correct");
+    expect(judge("to give up", ["give up"]).verdict).toBe("correct");
+    expect(judge("the environment", ["environment"]).verdict).toBe("correct");
+  });
+  it("британски и американски правопис", () => {
+    expect(judge("color", ["colour"]).verdict).toBe("correct");
+    expect(judge("organise", ["organize"]).verdict).toBe("correct");
+    expect(judge("center", ["centre"]).verdict).toBe("correct");
+    expect(judge("gray", ["grey"]).verdict).toBe("correct");
+  });
+  it("не бърка различни думи", () => {
+    expect(judge("rise", ["rize"]).verdict).toBe("wrong");
+    expect(judge("hour", ["horror"]).verdict).toBe("wrong");
+  });
+  it("размяна на съседни букви и две грешки при дълга дума е „почти“", () => {
+    expect(judge("recieve", ["receive"]).verdict).toBe("almost");
+    expect(judge("embarassment", ["embarrassment"]).verdict).toBe("almost");
+    expect(judge("acommodation", ["accommodation"]).verdict).toBe("almost");
+    expect(judge("catr", ["cart"]).verdict).toBe("wrong");
+  });
+  it("приема всяка от допустимите думи (напр. синоним от друга карта)", () => {
+    expect(judge("large", ["big", "large"]).verdict).toBe("correct");
+  });
+});
