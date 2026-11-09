@@ -14,7 +14,7 @@ export async function aiAvailable() {
   return aiEnabled();
 }
 
-const itemIn = z.object({ id: z.number().int().min(0).max(1000), surface: z.string().trim().min(1).max(80), sentence: z.string().trim().max(400) });
+const itemIn = z.object({ id: z.number().int().min(0).max(1000), surface: z.string().trim().min(1).max(80), sentence: z.string().trim().max(400), avoid: z.array(z.string().trim().max(120)).max(6).optional() });
 
 export type EnrichOut = { ok: true; items: Enriched[] } | { ok: false; error: string };
 

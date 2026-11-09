@@ -92,14 +92,25 @@ export function interleave<T>(due: T[], fresh: T[]): T[] {
 /**
  * opts.more: още нови думи отгоре на дневния лимит (бутон „Още“).
  * opts.practice: упражнение върху най-слабите вече учени думи; не променя графика.
+ * opts.only: преговор само на тези думи (след добавяне): новите и дължимите, без дневния лимит.
  */
-export async function getQueue(userId: string, now = new Date(), opts: { cap?: number; more?: number; practice?: boolean } = {}): Promise<QueueItem[]> {
+export async function getQueue(userId: string, now = new Date(), opts: { cap?: number; more?: number; practice?: boolean; only?: string[] } = {}): Promise<QueueItem[]> {
   const cap = opts.cap ?? 25 + (opts.more ?? 0);
   const [profile] = await db.select().from(profiles).where(eq(profiles.id, userId));
   const tz = profile?.timezone ?? "Europe/Sofia";
   const sod = startOfDay(now, tz);
 
   if (opts.practice) return practiceQueue(userId, now);
+  if (opts.only?.length) {
+    const cards = await db
+      .select()
+      .from(srsCards)
+      .where(and(eq(srsCards.userId, userId), eq(srsCards.suspended, false), inArray(srsCards.itemId, opts.only.slice(0, 30)), sql`(${srsCards.state} = 0 or ${srsCards.due} <= ${now})`));
+    // в реда, в който са добавени
+    const order = new Map(opts.only.map((id, k) => [id, k]));
+    cards.sort((a, b) => (order.get(a.itemId) ?? 0) - (order.get(b.itemId) ?? 0));
+    return buildItems(userId, cards);
+  }
 
   const [introducedToday, due] = await Promise.all([
     db

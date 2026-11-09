@@ -9,7 +9,7 @@ import { keepFocus } from "@/design/keep-focus";
 import { enrichAction } from "../../scan/actions";
 import { saveWordsAction } from "../actions";
 
-type Row = { key: string; surface: string; res: Enriched | null; translation: string; on: boolean };
+type Row = { key: string; surface: string; res: Enriched | null; translation: string; on: boolean; tried: string[] };
 type Phase = "input" | "loading" | "review" | "saving" | "done";
 const BATCH = 8;
 
@@ -20,7 +20,8 @@ export function BatchForm() {
   const [rows, setRows] = useState<Row[]>([]);
   const [prog, setProg] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<{ added: number; already: number; failed: number } | null>(null);
+  const [summary, setSummary] = useState<{ added: number; already: number; failed: number; ids: string[] } | null>(null);
+  const [busyRow, setBusyRow] = useState<string | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const parsed = parseWordList(text);
 
@@ -31,7 +32,7 @@ export function BatchForm() {
     setPhase("loading");
     const list = parsed.words;
     setProg({ done: 0, total: list.length });
-    const out: Row[] = list.map((w, i) => ({ key: `${i}-${w}`, surface: w, res: null, translation: "", on: false }));
+    const out: Row[] = list.map((w, i) => ({ key: `${i}-${w}`, surface: w, res: null, translation: "", on: false, tried: [] }));
     let stopped: string | null = null;
     for (let k = 0; k < list.length; k += BATCH) {
       const slice = list.slice(k, k + BATCH);
@@ -45,6 +46,7 @@ export function BatchForm() {
         if (row) {
           row.res = it;
           row.translation = it.translation_bg;
+          row.tried = [it.translation_bg];
           row.on = true;
         }
       }
@@ -61,6 +63,16 @@ export function BatchForm() {
   }
 
   const set = (key: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  /** „Друго значение“ за една дума от списъка. */
+  async function otherMeaning(r: Row) {
+    setBusyRow(r.key);
+    const avoid = [...new Set([...r.tried, r.translation.trim()].filter(Boolean))].slice(-6);
+    const out = await enrichAction([{ id: 0, surface: r.surface, sentence: "", avoid }]);
+    setBusyRow(null);
+    if (out.ok && out.items[0]) set(r.key, { res: out.items[0], translation: out.items[0].translation_bg, tried: [...avoid, out.items[0].translation_bg], on: true });
+    else setError(out.ok ? "Не получих друго значение." : out.error);
+  }
+
   const chosen = rows.filter((r) => r.on && r.translation.trim());
 
   async function save() {
@@ -105,8 +117,11 @@ export function BatchForm() {
         {summary.already > 0 && <p className="mt-4 text-ink-2">Вече бяха в речника: {summary.already}.</p>}
         {summary.failed > 0 && <p className="mt-2 text-ink-2">Не се записаха: {summary.failed}.</p>}
         <div className="mt-8 flex flex-col gap-2">
-          <Link href="/words" className="btn btn-primary w-full">Към речника</Link>
-          <button type="button" className="btn btn-secondary w-full" onClick={again}>Още думи</button>
+          {summary.ids.length > 0 && (
+            <a href={`/review?ids=${summary.ids.join(",")}`} className="btn btn-primary w-full">Упражни ги сега</a>
+          )}
+          <Link href="/words" className="btn btn-secondary w-full">Към речника</Link>
+          <button type="button" className="btn btn-ghost w-full" onClick={again}>Още думи</button>
         </div>
       </div>
     );
@@ -144,6 +159,9 @@ export function BatchForm() {
                     disabled={phase === "saving"}
                   />
                   {r.res?.meaning_bg && <p className="mt-2 text-[14px] leading-snug text-ink-2">{r.res.meaning_bg}</p>}
+                  <button type="button" className="mt-2 text-[14px] text-ink-2 underline underline-offset-4 disabled:opacity-50" onClick={() => otherMeaning(r)} disabled={busyRow !== null || phase === "saving"}>
+                    {busyRow === r.key ? "Търся…" : "Друго значение"}
+                  </button>
                   {r.res?.example_en && <p className="read mt-1 text-[15px] italic leading-snug text-ink-3">{r.res.example_en}</p>}
                 </div>
               </div>

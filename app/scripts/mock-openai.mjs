@@ -21,7 +21,7 @@ http.createServer((req, res) => {
     const items = JSON.parse(prompt.slice(prompt.indexOf("Items:\n") + 7));
     console.log(`заявка ${calls}: ${items.length} думи`);
     setTimeout(() => {
-      const out = items.map((i) => ({ id: i.id, lemma: i.surface.toLowerCase(), pos: "noun", phrase: i.surface.includes(" ") ? i.surface.toLowerCase() : null, translation_bg: `превод на ${i.surface}`, translation_alt_bg: "друг превод", meaning_bg: `Значение на „${i.surface}“ в този контекст.`, example_en: `Example with ${i.surface}.` }));
+      const out = items.map((i) => ({ id: i.id, lemma: i.surface.toLowerCase(), pos: "noun", phrase: i.surface.includes(" ") ? i.surface.toLowerCase() : null, translation_bg: i.avoid?.length ? `друго значение ${i.avoid.length} на ${i.surface}` : `превод на ${i.surface}`, translation_alt_bg: "друг превод", meaning_bg: `Значение на „${i.surface}“ в този контекст.`, example_en: `Example with ${i.surface}.` }));
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ items: out }) } }], usage: { prompt_tokens: 300, completion_tokens: 100 } }));
     }, 1500);

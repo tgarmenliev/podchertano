@@ -67,3 +67,12 @@ describe("лимити", () => {
     expect(estimateMicroEur("unknown-model", 1000, 1000)).toBe(60_000);
   });
 });
+
+describe("друго значение", () => {
+  it("avoid стига до заявката и иска различен превод", async () => {
+    const { buildPrompt } = await import("./enrich");
+    const p = buildPrompt({ items: [{ id: 0, surface: "bear", sentence: "", avoid: ["мечка"] }] });
+    expect(p).toContain('"avoid":["мечка"]');
+    expect(p).toContain("DIFFERENT");
+  });
+});

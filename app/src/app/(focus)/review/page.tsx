@@ -5,12 +5,13 @@ import { ReviewSession } from "./session";
 
 export const metadata = { title: "Преговор" };
 
-export default async function Review({ searchParams }: { searchParams: Promise<{ more?: string; practice?: string }> }) {
+export default async function Review({ searchParams }: { searchParams: Promise<{ more?: string; practice?: string; ids?: string }> }) {
   const sp = await searchParams;
   const { user } = await requireActive();
   const practice = sp.practice === "1";
   const more = Math.min(20, Math.max(0, Number(sp.more) || 0));
-  const items = await getQueue(user.id, new Date(), { practice, more });
+  const only = (sp.ids ?? "").split(",").filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 30);
+  const items = await getQueue(user.id, new Date(), { practice, more, only: only.length ? only : undefined });
 
   if (!items.length) {
     return (

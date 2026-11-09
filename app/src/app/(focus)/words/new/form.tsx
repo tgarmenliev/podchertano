@@ -75,6 +75,9 @@ export function NewWordForm({ aiAvailable }: { aiAvailable: boolean }) {
   const [manual, setManual] = useState(!aiAvailable);
   const [many, setMany] = useState(false);
   const [added, setAdded] = useState<{ word: string; id: string; again: boolean } | null>(null);
+  const [addedIds, setAddedIds] = useState<string[]>([]);
+  const [tried, setTried] = useState<string[]>([]);
+  const [other, setOther] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const l = "mb-2 block text-sm text-ink-2";
 
@@ -102,11 +105,27 @@ export function NewWordForm({ aiAvailable }: { aiAvailable: boolean }) {
     if (r.ok && r.items[0]) {
       setRes(r.items[0]);
       setTranslation(r.items[0].translation_bg);
+      setTried([r.items[0].translation_bg]);
       setPhase("result");
     } else {
       setError(r.ok ? "Не получих превод. Опитай пак." : r.error);
       setPhase("input");
     }
+  }
+
+  /** „Друго значение“: пита пак и иска различен превод от вече показаните. */
+  async function otherMeaning() {
+    if (!res) return;
+    setError(null);
+    setOther(true);
+    const avoid = [...new Set([...tried, translation.trim()].filter(Boolean))].slice(-6);
+    const r = await enrichAction([{ id: 0, surface: text.trim(), sentence: withSentence ? sentence.trim() : "", avoid }]);
+    setOther(false);
+    if (r.ok && r.items[0]) {
+      setRes(r.items[0]);
+      setTranslation(r.items[0].translation_bg);
+      setTried([...avoid, r.items[0].translation_bg]);
+    } else setError(r.ok ? "Не получих друго значение." : r.error);
   }
 
   async function save() {
@@ -129,6 +148,7 @@ export function NewWordForm({ aiAvailable }: { aiAvailable: boolean }) {
       return;
     }
     setAdded({ word: res.phrase ?? res.lemma, id: r.id, again: !r.created });
+    setAddedIds((ids) => (ids.includes(r.id) ? ids : [...ids, r.id]));
     setRes(null);
     setText("");
     setSentence("");
@@ -177,6 +197,9 @@ export function NewWordForm({ aiAvailable }: { aiAvailable: boolean }) {
           <Link href={`/words/${added.id}`} className="ml-1 underline underline-offset-4">
             Виж
           </Link>
+          <a href={`/review?ids=${addedIds.join(",")}`} className="mt-2 block font-medium underline underline-offset-4">
+            Упражни добавените думи ({addedIds.length})
+          </a>
         </p>
       )}
 
@@ -244,6 +267,10 @@ export function NewWordForm({ aiAvailable }: { aiAvailable: boolean }) {
               <label htmlFor="tr" className={l}>Превод (можеш да го поправиш)</label>
               <input id="tr" className="field !text-[20px] !font-[family-name:var(--font-ui)]" value={translation} onChange={(e) => setTranslation(e.target.value)} maxLength={120} disabled={phase === "saving"} />
               {res.translation_alt_bg && <p className="mt-2 text-ink-2">Още: {res.translation_alt_bg}</p>}
+              <button type="button" className="mt-3 text-[15px] text-ink-2 underline underline-offset-4 disabled:opacity-50" onClick={otherMeaning} disabled={other || phase === "saving"}>
+                {other ? "Търся друго значение…" : "Друго значение"}
+              </button>
+              {other && <div role="status" className="wave-line wave-loading mt-2 w-20" aria-label="Търся" />}
             </div>
 
             {res.meaning_bg && (

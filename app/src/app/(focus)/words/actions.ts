@@ -122,7 +122,7 @@ export async function saveWordAction(raw: unknown): Promise<SaveWordOut> {
   return r;
 }
 
-export type SaveWordsOut = { ok: true; added: number; already: number; failed: number } | { ok: false; error: string };
+export type SaveWordsOut = { ok: true; added: number; already: number; failed: number; ids: string[] } | { ok: false; error: string };
 
 /** Записва няколко думи наведнъж (до 30). Грешна дума не спира останалите. */
 export async function saveWordsAction(raw: unknown): Promise<SaveWordsOut> {
@@ -132,17 +132,21 @@ export async function saveWordsAction(raw: unknown): Promise<SaveWordsOut> {
   let added = 0;
   let already = 0;
   let failed = 0;
+  const ids: string[] = [];
   for (const item of list.data) {
     try {
       const r = await saveOne(user.id, item);
       if (!r.ok) failed++;
-      else if (r.created) added++;
-      else already++;
+      else {
+        ids.push(r.id);
+        if (r.created) added++;
+        else already++;
+      }
     } catch {
       failed++;
     }
   }
   revalidatePath("/words");
   revalidatePath("/");
-  return { ok: true, added, already, failed };
+  return { ok: true, added, already, failed, ids };
 }

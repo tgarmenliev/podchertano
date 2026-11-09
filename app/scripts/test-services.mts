@@ -46,6 +46,8 @@ assert(q2.length === 0, "новите за деня са изчерпани, а 
 const later = new Date(now.getTime() + 15 * 60_000);
 const q3 = await getQueue(U, later);
 assert(q3.length >= 1 && q3.some((x) => !x.intro), "след 15 мин. картата, отговорена грешно, се връща (в учене)");
+const only = await getQueue(U, later, { only: [c.id] });
+assert(only.length === 1 && only[0].isNew && only[0].intro, "преговор само на избрана нова дума (след добавяне), без дневния лимит");
 const sm = await getSummary(U, later);
 assert(sm.dueTomorrow >= 1 && sm.streak >= 1 && sm.total === 3, "обобщение за края на преговора: утре, серия, общо");
 const st = await getStats(U, later);
