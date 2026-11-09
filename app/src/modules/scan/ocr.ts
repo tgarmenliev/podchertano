@@ -4,6 +4,7 @@ import type { Worker as TWorker } from "tesseract.js";
 import { AUTO_THRESHOLD, buildLines, mergePasses, rawFromTesseract, toGray, withUnderlines, type RawWord } from "./layout";
 import type { TraceContext } from "./underline";
 import { recoverMissing } from "./recover";
+import { buildDict, correctWords, type Dict } from "./spell";
 import { loadForScan, storedCopy } from "./image";
 import type { ScanResult } from "./types";
 
@@ -12,6 +13,16 @@ import type { ScanResult } from "./types";
   Снимката не напуска телефона за тази стъпка. Не се викат платени услуги.
 */
 let workerPromise: Promise<TWorker> | null = null;
+let dictPromise: Promise<Dict | null> | null = null;
+
+/** Речник за корекция на очевидни грешки; ако не се зареди, просто пропускаме корекцията. */
+function getDict() {
+  dictPromise ??= fetch("/ocr/words.json")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => (j ? buildDict(j) : null))
+    .catch(() => null);
+  return dictPromise;
+}
 let onProgress: ((p: number) => void) | null = null;
 
 async function getWorker() {
@@ -89,6 +100,8 @@ export async function scanPage(file: File, on: (step: Step, progress?: number, p
       // възстановяването е бонус: при грешка продължаваме с вече намереното
     }
   }
+  const dict = await getDict();
+  if (dict) words = correctWords(words, dict).words;
   const image = await storedCopy(img.canvas);
   return { words, width: img.width, height: img.height, image, ocrMs };
 }

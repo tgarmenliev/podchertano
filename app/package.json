@@ -12,8 +12,8 @@
     "user:reset": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/user.mts reset",
     "user:list": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/user.mts list",
     "test": "vitest run",
-    "postinstall": "node scripts/copy-ocr-assets.mjs",
-    "prebuild": "node scripts/copy-ocr-assets.mjs"
+    "postinstall": "node scripts/copy-ocr-assets.mjs && node scripts/build-wordlist.mjs",
+    "prebuild": "node scripts/copy-ocr-assets.mjs && node scripts/build-wordlist.mjs"
   },
   "dependencies": {
     "@neon/config": "^1.10.2",
@@ -42,7 +42,8 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "wordlist-english": "^1.2.1"
   },
   "packageManager": "pnpm@8.15.5"
 }
