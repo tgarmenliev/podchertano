@@ -52,9 +52,12 @@ export default async function Today() {
             {todo > 0 ? (
               <>
                 <p className="mt-2 text-ink-2">
-                  Около {minutes} {plural(minutes, "минута", "минути")}
-                  {s.newAvailable > 0 ? `. Нови: ${Math.min(s.newAvailable, todo)}.` : "."}
+                  {s.dueNow > 0 && `${Math.min(s.dueNow, todo)} за повторение`}
+                  {s.dueNow > 0 && todo - Math.min(s.dueNow, todo) > 0 && " и "}
+                  {todo - Math.min(s.dueNow, todo) > 0 && `${todo - Math.min(s.dueNow, todo)} ${plural(todo - Math.min(s.dueNow, todo), "нова", "нови")}`}
+                  . Около {minutes} {plural(minutes, "минута", "минути")}.
                 </p>
+                {s.dueNow > 25 && <p className="mt-1 text-[14px] text-ink-3">Чакат {s.dueNow} думи. Днес са първите 25, останалите идват след това.</p>}
                 <Link href="/review" className="btn btn-primary mt-6 w-full">Започни преговор</Link>
               </>
             ) : (

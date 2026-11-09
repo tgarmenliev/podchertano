@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "../src/core/db";
 import { profiles, srsCards, user } from "../src/core/db/schema";
 import { addWord, deleteWord, getWord, listWords, updateWord } from "../src/modules/vocab/service";
-import { getQueue, getStats, maskSentence, submitReview } from "../src/modules/review/service";
+import { getQueue, getStats, getSummary, maskSentence, submitReview } from "../src/modules/review/service";
 import { eq } from "drizzle-orm";
 import { deleteSource, getSource, getSourceImage, listSources, saveScan } from "../src/modules/scan/service";
 
@@ -46,6 +46,8 @@ assert(q2.length === 0, "новите за деня са изчерпани, а 
 const later = new Date(now.getTime() + 15 * 60_000);
 const q3 = await getQueue(U, later);
 assert(q3.length >= 1 && q3.some((x) => !x.intro), "след 15 мин. картата, отговорена грешно, се връща (в учене)");
+const sm = await getSummary(U, later);
+assert(sm.dueTomorrow >= 1 && sm.streak >= 1 && sm.total === 3, "обобщение за края на преговора: утре, серия, общо");
 const st = await getStats(U, later);
 assert(st.counts.learning === 2 && st.streak === 1 && st.reviewsToday === 2, "статистика след преглед: 2 в учене, серия 1, 2 днес");
 assert(st.days.length === 14 && st.days[13].n === 2, "последните 14 дни");

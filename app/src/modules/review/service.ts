@@ -239,6 +239,22 @@ export async function submitReview(userId: string, input: ReviewInput, now = new
   });
 }
 
+/** За крайния екран на преговора: колко думи чакат до края на утрешния ден и серията. */
+export async function getSummary(userId: string, now = new Date()) {
+  const [profile] = await db.select().from(profiles).where(eq(profiles.id, userId));
+  const tz = profile?.timezone ?? "Europe/Sofia";
+  const tomorrow = startOfDay(new Date(now.getTime() + 30 * 3600_000), tz);
+  const dayAfter = startOfDay(new Date(tomorrow.getTime() + 30 * 3600_000), tz);
+  const [[due], stats] = await Promise.all([
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(srsCards)
+      .where(and(eq(srsCards.userId, userId), eq(srsCards.suspended, false), ne(srsCards.state, 0), lte(srsCards.due, dayAfter))),
+    getStats(userId, now),
+  ]);
+  return { dueTomorrow: due?.n ?? 0, streak: stats.streak, reviewsToday: stats.reviewsToday, known: stats.counts.known, total: stats.total };
+}
+
 /** Числата за екраните „Днес“ и „Напредък“. */
 export async function getStats(userId: string, now = new Date()) {
   const since = new Date(now.getTime() - 400 * 24 * 3600_000);

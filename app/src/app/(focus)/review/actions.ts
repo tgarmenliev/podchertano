@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { requireActive } from "@/core/auth/session";
-import { submitReview } from "@/modules/review/service";
+import { getSummary, submitReview } from "@/modules/review/service";
 
 const schema = z.object({
   logId: z.uuid(),
@@ -19,4 +19,9 @@ export async function submitReviewAction(raw: unknown) {
   const { user } = await requireActive();
   const i = schema.parse(raw);
   await submitReview(user.id, { ...i, reviewedAt: new Date(i.reviewedAt) });
+}
+
+export async function summaryAction() {
+  const { user } = await requireActive();
+  return getSummary(user.id);
 }

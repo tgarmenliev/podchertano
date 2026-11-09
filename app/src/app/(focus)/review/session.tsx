@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { judge, type Verdict } from "@/core/srs/answer";
 import { isFast, ratingFromResult } from "@/core/srs/scheduler";
-import { enqueue, flushOutbox, type OutboxItem } from "@/core/offline/outbox";
+import { enqueue, flushOutbox, pending, type OutboxItem } from "@/core/offline/outbox";
 import { IconCheck, IconClose, IconEye, IconSpeaker } from "@/design/icons";
 import type { Mode, QueueItem } from "@/modules/review/service";
 import { posLabel } from "@/modules/vocab/pos";
-import { submitReviewAction } from "./actions";
+import { submitReviewAction, summaryAction } from "./actions";
 import { keepFocus } from "@/design/keep-focus";
 
 const modeLabel = { recognize: "Помниш ли думата?", type_from_bg: "Как е на английски?", cloze: "Допълни думата", choice: "Избери правилната дума", listen: "Чуй и напиши" } as const;
@@ -62,6 +62,25 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
           : "type_from_bg";
 
   const finishedAll = !card;
+  const [summary, setSummary] = useState<Awaited<ReturnType<typeof summaryAction>> | null>(null);
+  useEffect(() => {
+    if (!finishedAll || practice) return;
+    let off = false;
+    (async () => {
+      // чакаме последните отговори да стигнат до сървъра, за да са верни числата
+      for (let i = 0; i < 20 && pending() > 0; i++) {
+        await flushOutbox(send);
+        if (pending() > 0) await new Promise((r) => setTimeout(r, 300));
+      }
+      try {
+        const r = await summaryAction();
+        if (!off) setSummary(r);
+      } catch {}
+    })();
+    return () => {
+      off = true;
+    };
+  }, [finishedAll, practice]);
   const pct = Math.round((done / total) * 100);
 
   /** Свободното упражнение не променя графика: нищо не се записва. */
@@ -172,7 +191,7 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
         <div className="mt-12">
           <h1 className="text-3xl font-semibold tracking-tight">
             {practice ? "Упражнението е готово." : "Готово."}
-            <span className="wave-line mt-2 block w-24" />
+            <span className="wave-line wave-draw mt-2 block w-24" />
           </h1>
           {asked > 0 && (
             <p className="mt-6 text-lg">
@@ -180,7 +199,26 @@ export function ReviewSession({ items, practice = false }: { items: QueueItem[];
             </p>
           )}
           {learned > 0 && <p className="mt-2 text-ink-2">Нови думи днес: {learned}.</p>}
-          <p className="mt-2 text-ink-2">{practice ? "Графикът не е променен." : "Следващият преговор на тези думи е по график."}</p>
+          {practice ? (
+            <p className="mt-2 text-ink-2">Графикът не е променен.</p>
+          ) : summary ? (
+            <dl className="mt-6 grid grid-cols-3 gap-3 border-y border-line py-4 text-center">
+              <div>
+                <dd className="text-[28px] font-semibold leading-none tabular-nums">{summary.dueTomorrow}</dd>
+                <dt className="mt-1 text-[13px] text-ink-2">за утре</dt>
+              </div>
+              <div>
+                <dd className="text-[28px] font-semibold leading-none tabular-nums">{summary.streak}</dd>
+                <dt className="mt-1 text-[13px] text-ink-2">{summary.streak === 1 ? "ден подред" : "дни подред"}</dt>
+              </div>
+              <div>
+                <dd className="text-[28px] font-semibold leading-none tabular-nums">{summary.known}</dd>
+                <dt className="mt-1 text-[13px] text-ink-2">усвоени</dt>
+              </div>
+            </dl>
+          ) : (
+            <p className="mt-2 text-ink-2">Следващият преговор на тези думи е по график.</p>
+          )}
           {missed.length > 0 && (
             <section className="mt-8" aria-labelledby="missed">
               <h2 id="missed" className="text-base font-semibold">За още един поглед</h2>
