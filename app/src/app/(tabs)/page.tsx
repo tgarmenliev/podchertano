@@ -16,6 +16,41 @@ export default async function Today() {
   const minutes = Math.max(1, Math.round(todo * 0.4));
   const hasWords = s.total > 0;
 
+  const showReading = !!(reading?.enabled && (reading.unread || reading.canMake));
+  const firstTime = showReading && reading?.enabled && reading.completed === 0;
+  const readingCard = showReading && reading?.enabled && (
+    <section className={firstTime ? "enter mt-6" : "mt-8"} aria-labelledby="mytext">
+      <Link
+        href="/reading"
+        className="block rounded-[var(--radius-m)] border px-5 py-5 active:bg-surface-2"
+        style={firstTime ? { borderColor: "var(--accent)", background: "var(--accent-tint)" } : { borderColor: "var(--line)", background: "var(--surface)" }}
+      >
+        <div className="flex items-center gap-2">
+          {firstTime && (
+            <span className="rounded-full px-2.5 py-[3px] text-[12px] font-semibold uppercase tracking-wide" style={{ background: "var(--accent-strong)", color: "var(--accent-ink)" }}>
+              Ново
+            </span>
+          )}
+          <h2 id="mytext" className="text-sm font-semibold text-ink-2">Твоят текст</h2>
+        </div>
+        {firstTime && <span className="wave-line wave-draw mt-2 block w-16" />}
+        {reading.unread ? (
+          <>
+            <p className="read mt-2 text-[22px] font-medium leading-snug">{reading.unread.title}</p>
+            <p className="mt-1 text-[15px] text-ink-2">{reading.unread.words} твои думи вътре, 5 въпроса като в ДЗИ. Около 4 минути.</p>
+            <span className="btn btn-primary mt-4 w-full">Чети</span>
+          </>
+        ) : (
+          <>
+            <p className="mt-2 text-[20px] font-medium leading-snug">{firstTime ? "Нов начин да учиш: текст само с твои думи" : "Нов текст, написан от твои думи"}</p>
+            <p className="mt-1 text-[15px] text-ink-2">Избирам думите, които най-много ти трябват, и ги вплитам в кратък текст с въпроси като в ДЗИ. Четенето се брои за преговор.</p>
+            <span className="btn btn-primary mt-4 w-full">Направи ми текст</span>
+          </>
+        )}
+      </Link>
+    </section>
+  );
+
   return (
     <main>
       <header className="flex items-center justify-between py-2">
@@ -44,6 +79,7 @@ export default async function Today() {
         </section>
       ) : (
         <>
+          {firstTime && readingCard}
           <section className="pt-9" aria-labelledby="due">
             <p className="text-sm text-ink-2">За преговор днес</p>
             <h1 id="due" className="mt-1 flex items-baseline gap-3">
@@ -71,29 +107,7 @@ export default async function Today() {
             )}
           </section>
 
-          {reading?.enabled && (reading.unread || reading.canMake) && (
-            <section className="mt-8" aria-labelledby="mytext">
-              <Link href="/reading" className="block rounded-[var(--radius-m)] border border-line bg-surface px-5 py-5 active:bg-surface-2">
-                <div className="flex items-center gap-2">
-                  <h2 id="mytext" className="text-sm font-semibold text-ink-2">Твоят текст</h2>
-                  {reading.completed === 0 && <span className="rounded-full px-2 py-[2px] text-[12px] font-semibold" style={{ background: "var(--accent-tint)", color: "var(--accent-strong)" }}>Ново</span>}
-                </div>
-                {reading.unread ? (
-                  <>
-                    <p className="read mt-2 text-[22px] font-medium leading-snug">{reading.unread.title}</p>
-                    <p className="mt-1 text-[15px] text-ink-2">{reading.unread.words} твои думи вътре, 5 въпроса като в ДЗИ. Около 4 минути.</p>
-                    <span className="btn btn-primary mt-4 w-full">Чети</span>
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-2 text-[20px] font-medium leading-snug">Нов текст, написан от твои думи</p>
-                    <p className="mt-1 text-[15px] text-ink-2">Избирам думите, които най-много ти трябват, и ги вплитам в кратък текст с въпроси като в ДЗИ. Четенето се брои за преговор.</p>
-                    <span className="btn btn-primary mt-4 w-full">Направи ми текст</span>
-                  </>
-                )}
-              </Link>
-            </section>
-          )}
+          {!firstTime && readingCard}
 
           <section className="mt-10 border-t border-line pt-6" aria-labelledby="stat">
             <h2 id="stat" className="text-base font-semibold">Речникът ти</h2>
