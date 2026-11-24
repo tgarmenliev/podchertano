@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { aiEnabled, aiLimits } from "@/core/ai/config";
-import { generateReading, type GlossaryItem, type ReadingQuestion, findForm } from "@/core/ai/reading";
+import { generateReading, READING_PROMPT_VERSION, type GlossaryItem, type ReadingQuestion, findForm } from "@/core/ai/reading";
 import { checkBudget, recordUsage } from "@/core/ai/usage";
 import { db } from "@/core/db";
 import { encounters, readings, srsCards, vocabItems } from "@/core/db/schema";
@@ -140,7 +140,7 @@ async function makeReading(userId: string, now: Date): Promise<{ id: string; cre
     if (again) return { id: again.id, created: false };
     const [row] = await tx
       .insert(readings)
-      .values({ userId, title: gen.reading.title, body, words, questions: gen.reading.questions, model: gen.model, promptVersion: "reading.v1", costMicroEur: gen.estCostMicroEur })
+      .values({ userId, title: gen.reading.title, body, words, questions: gen.reading.questions, model: gen.model, promptVersion: READING_PROMPT_VERSION, costMicroEur: gen.estCostMicroEur })
       .returning({ id: readings.id });
     return { id: row.id, created: true };
   });

@@ -6,7 +6,7 @@ import { findForm } from "./findform";
   „Твоят текст“: AI пише кратък текст във формата на задача от ДЗИ с думите на ученика и 5 въпроса с избор.
   Всичко, което моделът върне, се проверява (validateReading). Ако нещо не е наред, пробваме още веднъж; после грешка.
 */
-export const READING_PROMPT_VERSION = "reading.v1";
+export const READING_PROMPT_VERSION = "reading.v2";
 
 export type GlossaryItem = { id: number; target: string; pos: string; bg: string; seen?: string | null };
 
@@ -16,7 +16,7 @@ export function buildReadingPrompt(items: GlossaryItem[]) {
 Write ONE original text of 230 to 290 words in 3 or 4 paragraphs, in the style of exam reading passages: a short story, a magazine report, a blog post or an interview about an ordinary, interesting situation. The topic must NOT be about the target words themselves.
 The student is learning the TARGET WORDS below. Use EVERY target word or phrase naturally at least once, in the sense given by its Bulgarian meaning, in the exact form or an inflected form (tense, plural, -ing). Never define them in the text. Keep all other vocabulary at B1 level or easier, so that the target words are the main difficulty. Give the text a title of 2 to 7 words. No markdown, no bold, no brackets.
 
-Then write exactly 5 multiple-choice questions in the style of the exam (for example "What does the writer say about ...?", "Why did ...?", "What is meant by '...' in the text?"). Each question has exactly 4 options and exactly one correct answer that is clearly supported by the text. The wrong options must sound plausible but be clearly wrong according to the text. Vary the position of the correct answer. For each question give:
+Then write exactly 5 multiple-choice questions in the style of the exam (for example "What does the writer say about ...?", "Why did ...?", "What is meant by '...' in the text?"). Mix the question types like the real exam: two about details, one asking why something happened or what can be concluded, one about the main idea or the writer's purpose or attitude, and one asking what a given target word or phrase means in the text (the options are short English explanations). Each question has exactly 4 options and exactly one correct answer that is clearly supported by the text. The wrong options must sound plausible but be clearly wrong according to the text. Vary the position of the correct answer. For each question give:
 - "evidence": ONE sentence copied EXACTLY, character for character, from your text, which proves the correct answer;
 - "why_bg": one short sentence in Bulgarian that explains why the answer is correct.
 

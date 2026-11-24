@@ -108,5 +108,7 @@ describe("generateReading", () => {
     const p = buildReadingPrompt(items);
     expect(p).toContain('"target":"fend off"');
     expect(p).toContain("EXACTLY");
+    expect(p).toContain("main idea");
+    expect(p).toContain("means in the text");
   });
 });
