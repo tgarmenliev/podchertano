@@ -7,6 +7,8 @@ export const aiEnabled = () => process.env.AI_ENABLED === "1" && !!process.env.O
 export const aiLimits = () => ({
   /** заявки на потребител на ден (превод на страница = няколко заявки по 5 думи; докосване на дума = 1) */
   perUserDaily: Number(process.env.AI_DAILY_LIMIT ?? 60),
+  /** текстове „Твоят текст“ на потребител на ден */
+  perUserDailyReadings: Number(process.env.AI_DAILY_READINGS ?? 3),
   /** страници за четене с AI на потребител на ден */
   perUserDailyPages: Number(process.env.AI_DAILY_PAGES ?? 8),
   /** твърд месечен таван за целия сайт, в евро (прекъсвач) */

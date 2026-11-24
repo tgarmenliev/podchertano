@@ -24,6 +24,9 @@ export type Item = {
   sentence: string;
 };
 
+/** Дума, след която свършва част от изречението (запетая, точка и подобни, евентуално с кавичка след тях). */
+const endsClause = (t: string) => /[,;:.!?…]["”’')\]]*$/.test(t) && !/^(Mr|Mrs|Ms|Dr|St|vs|etc|e\.g|i\.e)\.$/i.test(t);
+
 const strip = (s: string) => s.replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9']+$/g, "");
 
 /** Разделя абзац на изречения и връща за всяка дума в кое изречение попада. */
@@ -64,6 +67,7 @@ export function itemsFromSelection(words: ScanWord[]): Item[] {
       }
       const prev = cur[cur.length - 1];
       if (prev && prev.line !== w.line) close(); // фраза не прекъсва ред
+      else if (prev && endsClause(prev.t)) close(); // и не прекосява запетая или точка: „gaunt, stringy“ са две думи
       cur.push(w);
     }
     close();

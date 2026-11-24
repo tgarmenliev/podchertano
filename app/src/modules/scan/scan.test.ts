@@ -24,6 +24,14 @@ describe("избор на думи", () => {
     const w = mk("He said: \"Don't go.\" Then left.", [2, 3]);
     expect(itemsFromSelection(w)[0].surface).toBe("Don't go");
   });
+  it("две подчертани думи през запетая са две думи, не една фраза", () => {
+    const w = mk("He was gaunt, stringy and tall.", [2, 3]);
+    expect(itemsFromSelection(w).map((x) => x.surface)).toEqual(["gaunt", "stringy"]);
+  });
+  it("фраза не минава през точка, но „Dr. Mortimer“ си остава цяло", () => {
+    expect(itemsFromSelection(mk("It ended. Then he left.", [1, 2])).map((x) => x.surface)).toEqual(["ended", "Then"]);
+    expect(itemsFromSelection(mk("Ask Dr. Mortimer now.", [1, 2])).map((x) => x.surface)).toEqual(["Dr. Mortimer"]);
+  });
   it("фраза не пресича ред", () => {
     const w = mk("one two three four five six seven eight nine ten", [7, 8]); // line 0 край, line 1 начало
     expect(itemsFromSelection(w).map((x) => x.surface)).toEqual(["eight", "nine"]);

@@ -220,7 +220,7 @@ export const reviewLogs = pgTable(
     id: uuid("id").primaryKey(),
     userId: text("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
     cardId: uuid("card_id").notNull().references(() => srsCards.id, { onDelete: "cascade" }),
-    mode: text("mode", { enum: ["recognize", "type_from_bg", "cloze", "choice", "listen"] }).notNull(),
+    mode: text("mode", { enum: ["recognize", "type_from_bg", "cloze", "choice", "listen", "reading"] }).notNull(),
     rating: integer("rating").notNull(), // 1 Again, 2 Hard, 3 Good, 4 Easy
     correct: boolean("correct").notNull(),
     typedAnswer: text("typed_answer"),
@@ -238,7 +238,7 @@ export const usageEvents = pgTable(
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: text("user_id").references(() => profiles.id, { onDelete: "set null" }),
-    kind: text("kind", { enum: ["ocr", "detect", "enrich"] }).notNull(),
+    kind: text("kind", { enum: ["ocr", "detect", "enrich", "reading"] }).notNull(),
     provider: text("provider").notNull(),
     model: text("model"),
     tokensIn: integer("tokens_in"),
@@ -249,4 +249,34 @@ export const usageEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("usage_user_time_idx").on(t.userId, t.createdAt)],
+);
+
+/** „Твоят текст“: кратък текст с думи на ученика и въпроси като в ДЗИ. Създава се с AI, чете се и се отговаря в приложението. */
+export const readings = pgTable(
+  "readings",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: text("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    /** абзаците, разделени с празен ред */
+    body: text("body").notNull(),
+    /** [{itemId, target, form, translationBg, translationAltBg, meaningBg}] */
+    words: jsonb("words").notNull(),
+    /** [{q, options[4], answer, evidence, whyBg}] */
+    questions: jsonb("questions").notNull(),
+    model: text("model"),
+    promptVersion: text("prompt_version"),
+    costMicroEur: integer("cost_micro_eur").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    /** индекси на избраните отговори */
+    answers: jsonb("answers"),
+    score: integer("score"),
+    /** itemId на думите, на които ученикът е погледнал превода */
+    peeked: jsonb("peeked"),
+    durationMs: integer("duration_ms"),
+    /** индекси на въпроси, отбелязани като грешни */
+    reported: jsonb("reported").notNull().default(sql`'[]'::jsonb`),
+  },
+  (t) => [index("readings_user_created_idx").on(t.userId, t.createdAt)],
 );

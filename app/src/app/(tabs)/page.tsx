@@ -5,12 +5,13 @@ import Image from "next/image";
 import { IconCamera, IconChevron } from "@/design/icons";
 import { getStats } from "@/modules/review/service";
 import { listSources } from "@/modules/scan/service";
+import { readingStatus } from "@/modules/reading/service";
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
 export default async function Today() {
   const { user } = await requireActive();
-  const [s, recent] = await Promise.all([getStats(user.id), listSources(user.id, 3)]);
+  const [s, recent, reading] = await Promise.all([getStats(user.id), listSources(user.id, 3), readingStatus(user.id).catch(() => null)]);
   const todo = Math.min(s.dueNow + s.newAvailable, 25);
   const minutes = Math.max(1, Math.round(todo * 0.4));
   const hasWords = s.total > 0;
@@ -69,6 +70,30 @@ export default async function Today() {
               </>
             )}
           </section>
+
+          {reading?.enabled && (reading.unread || reading.canMake) && (
+            <section className="mt-8" aria-labelledby="mytext">
+              <Link href="/reading" className="block rounded-[var(--radius-m)] border border-line bg-surface px-5 py-5 active:bg-surface-2">
+                <div className="flex items-center gap-2">
+                  <h2 id="mytext" className="text-sm font-semibold text-ink-2">Твоят текст</h2>
+                  {reading.completed === 0 && <span className="rounded-full px-2 py-[2px] text-[12px] font-semibold" style={{ background: "var(--accent-tint)", color: "var(--accent-strong)" }}>Ново</span>}
+                </div>
+                {reading.unread ? (
+                  <>
+                    <p className="read mt-2 text-[22px] font-medium leading-snug">{reading.unread.title}</p>
+                    <p className="mt-1 text-[15px] text-ink-2">{reading.unread.words} твои думи вътре, 5 въпроса като в ДЗИ. Около 4 минути.</p>
+                    <span className="btn btn-primary mt-4 w-full">Чети</span>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-2 text-[20px] font-medium leading-snug">Нов текст, написан от твои думи</p>
+                    <p className="mt-1 text-[15px] text-ink-2">Избирам думите, които най-много ти трябват, и ги вплитам в кратък текст с въпроси като в ДЗИ. Четенето се брои за преговор.</p>
+                    <span className="btn btn-primary mt-4 w-full">Направи ми текст</span>
+                  </>
+                )}
+              </Link>
+            </section>
+          )}
 
           <section className="mt-10 border-t border-line pt-6" aria-labelledby="stat">
             <h2 id="stat" className="text-base font-semibold">Речникът ти</h2>

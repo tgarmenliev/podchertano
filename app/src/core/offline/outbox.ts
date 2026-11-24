@@ -7,7 +7,7 @@
 export type OutboxItem = {
   logId: string;
   cardId: string;
-  mode: "recognize" | "type_from_bg" | "cloze" | "choice" | "listen";
+  mode: "recognize" | "type_from_bg" | "cloze" | "choice" | "listen" | "reading";
   rating: 1 | 2 | 3 | 4;
   correct: boolean;
   typedAnswer: string | null;

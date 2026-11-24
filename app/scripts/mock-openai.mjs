@@ -1,6 +1,7 @@
 // Фалшив сървър, който прилича на OpenAI, за тестване на екраните без платени заявки.
 // Употреба: node scripts/mock-openai.mjs  (порт 4010), после OPENAI_BASE_URL=http://localhost:4010
 import http from "node:http";
+import { fakeReading } from "./mock-reading.mjs";
 let calls = 0;
 http.createServer((req, res) => {
   let body = "";
@@ -8,6 +9,14 @@ http.createServer((req, res) => {
   req.on("end", () => {
     calls++;
     const content = JSON.parse(body).messages[0].content;
+    if (typeof content === "string" && content.includes("TARGET WORDS")) {
+      console.log(`заявка ${calls}: текст за четене`);
+      setTimeout(() => {
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(fakeReading(content)) } }], usage: { prompt_tokens: 900, completion_tokens: 1500 } }));
+      }, 1500);
+      return;
+    }
     if (Array.isArray(content)) {
       // чете страница (снимка): фалшив отговор
       console.log(`заявка ${calls}: четене на страница`);

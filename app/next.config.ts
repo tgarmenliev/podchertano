@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   },
   // снимката + разпознатият текст при запазване на страница
   experimental: { serverActions: { bodySizeLimit: "4mb" } },
+  // речникът по честота се чете и на сървъра (подбор на думи за „Твоят текст“)
+  outputFileTracingIncludes: { "/**": ["./public/ocr/words.json"] },
   /* config options here */
   turbopack: {
     rules: {

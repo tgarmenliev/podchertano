@@ -205,10 +205,12 @@ async function buildItems(userId: string, cards: (typeof srsCards.$inferSelect)[
   return items;
 }
 
+export type LogMode = Mode | "reading";
+
 export type ReviewInput = {
   logId: string; // uuid от клиента: така повторното изпращане е безопасно
   cardId: string;
-  mode: Mode;
+  mode: LogMode;
   rating: 1 | 2 | 3 | 4;
   correct: boolean;
   typedAnswer?: string | null;
